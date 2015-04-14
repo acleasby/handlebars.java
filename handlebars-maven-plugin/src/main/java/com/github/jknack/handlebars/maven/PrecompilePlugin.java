@@ -41,6 +41,7 @@ import com.github.jknack.handlebars.Template;
 import com.github.jknack.handlebars.helper.I18nHelper;
 import com.github.jknack.handlebars.helper.PrecompileHelper;
 import com.github.jknack.handlebars.io.FileTemplateLoader;
+import com.github.jknack.handlebars.io.URLTemplateLoader;
 import com.google.javascript.jscomp.CheckLevel;
 import com.google.javascript.jscomp.ClosureCodingConvention;
 import com.google.javascript.jscomp.CompilationLevel;
@@ -154,6 +155,10 @@ public class PrecompilePlugin extends HandlebarsPlugin {
 
         File basedir = new File(prefix);
         File output = new File(this.output);
+        long outputLastModified = -1;
+        if (output.exists()) {
+            outputLastModified = output.lastModified();
+        }
         boolean error = true;
         PrintWriter writer = null;
         InputStream runtimeIS = null;
@@ -161,7 +166,21 @@ public class PrecompilePlugin extends HandlebarsPlugin {
         try {
             String realPrefix = basedir.getPath();
 
-            Handlebars handlebars = new Handlebars(new FileTemplateLoader(basedir, suffix));
+            URLTemplateLoader loader = new FileTemplateLoader(basedir, suffix);
+            long lastModifiedTemplate = -1;
+            for (File f : FileUtils.getFiles(basedir, "**/*" + suffix, null)) {
+                lastModifiedTemplate = f.lastModified() > lastModifiedTemplate
+                        ? f.lastModified()
+                        : lastModifiedTemplate;
+            }
+
+            if (outputLastModified > lastModifiedTemplate) {
+                getLog().info("Not compiling templates; output is newer.");
+                error = false;
+                return;
+            }
+
+            Handlebars handlebars = new Handlebars(loader);
             handlebars.handlebarsJsFile(handlebarsJsFile);
 
             final List<CharSequence> extras = new ArrayList<CharSequence>();
@@ -324,7 +343,7 @@ public class PrecompilePlugin extends HandlebarsPlugin {
      * @param classpath  The project classpath.
      */
     private void i18nJs(final Handlebars handlebars, final List<CharSequence> extras,
-            final URL[] classpath) {
+                        final URL[] classpath) {
         handlebars.registerHelper(I18nHelper.i18nJs.name(), new Helper<String>() {
             @Override
             public CharSequence apply(final String context, final Options options)
@@ -365,7 +384,7 @@ public class PrecompilePlugin extends HandlebarsPlugin {
      * @return JS code.
      */
     private CharSequence registerHelper(final String name, final String body,
-            final String... args) {
+                                        final String... args) {
         return String.format("Handlebars.registerHelper('%s', function (%s) {\n%s\n});\n\n", name,
                 join(args, ", "), body);
     }
