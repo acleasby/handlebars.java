@@ -36,7 +36,7 @@
 
     <!-- Test dependencies -->
     <dependency>
-      <groupId>com.github.jknack</groupId>
+      <groupId>com.github.acleasby</groupId>
       <artifactId>handlebars</artifactId>
       <version>${project.version}</version>
       <scope>test</scope>
