@@ -3,31 +3,30 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 
-    <modelVersion>4.0.0</modelVersion>
-    <groupId>com.github.acleasby</groupId>
-    <artifactId>handlebars.java</artifactId>
-    <version>2.1.1</version>
-    <packaging>pom</packaging>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.github.jknack</groupId>
+  <artifactId>handlebars.java</artifactId>
+  <version>4.0.1-SNAPSHOT</version>
+  <packaging>pom</packaging>
 
     <name>Handlebars.java</name>
     <description>Logic-less and semantic templates with Java</description>
 
     <url>https://github.com/jknack/handlebars.java</url>
 
-    <modules>
-        <module>handlebars</module>
-        <module>handlebars-helpers</module>
-        <module>handlebars-springmvc</module>
-        <module>handlebars-json</module>
-        <module>handlebars-jackson2</module>
-        <module>handlebars-markdown</module>
-        <module>handlebars-humanize</module>
-        <module>handlebars-proto</module>
-        <module>handlebars-guava-cache</module>
-        <module>handlebars-maven-plugin</module>
-        <module>handlebars-maven-plugin-tests</module>
-        <module>integration-tests</module>
-    </modules>
+  <modules>
+    <module>handlebars</module>
+    <module>handlebars-helpers</module>
+    <module>handlebars-springmvc</module>
+    <module>handlebars-jackson2</module>
+    <module>handlebars-markdown</module>
+    <module>handlebars-humanize</module>
+    <module>handlebars-proto</module>
+    <module>handlebars-guava-cache</module>
+    <module>handlebars-maven-plugin</module>
+    <module>handlebars-maven-plugin-tests</module>
+    <module>integration-tests</module>
+  </modules>
 
     <licenses>
         <license>
@@ -180,38 +179,40 @@
         </dependencies>
     </dependencyManagement>
 
-    <build>
-        <plugins>
-            <!-- We're on 1.6 -->
-            <plugin>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.1</version>
-                <configuration>
-                    <source>1.6</source>
-                    <target>1.6</target>
-                </configuration>
-            </plugin>
+  <build>
+    <plugins>
+      <!-- We're on 1.7 -->
+      <plugin>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.1</version>
+        <configuration>
+          <source>1.7</source>
+          <target>1.7</target>
+        </configuration>
+      </plugin>
 
             <plugin>
                 <artifactId>maven-jar-plugin</artifactId>
                 <version>2.4</version>
             </plugin>
 
-            <!-- sure-fire -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>2.16</version>
-                <configuration>
-                    <includes>
-                        <include>**/*Test.java</include>
-                        <include>**/Issue*.java</include>
-                    </includes>
-                    <excludes>
-                        <exclude>**/*BenchTest.java</exclude>
-                    </excludes>
-                </configuration>
-            </plugin>
+      <!-- sure-fire -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>2.16</version>
+        <configuration>
+          <!-- set default locale of the test JVM to en_US because some tests expect e.g. the dollar sign as currency symbol -->
+          <argLine>-Duser.language=en -Duser.country=US</argLine>
+          <includes>
+            <include>**/*Test.java</include>
+            <include>**/Issue*.java</include>
+          </includes>
+          <excludes>
+            <exclude>**/*BenchTest.java</exclude>
+          </excludes>
+        </configuration>
+      </plugin>
 
             <!-- Eclipse setup -->
             <plugin>
@@ -223,27 +224,27 @@
                 </configuration>
             </plugin>
 
-            <!-- Checkstyle -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-checkstyle-plugin</artifactId>
-                <version>2.9.1</version>
-                <configuration>
-                    <consoleOutput>true</consoleOutput>
-                    <configLocation>checkstyle.xml</configLocation>
-                    <failsOnError>true</failsOnError>
-                    <excludes>**/HbsServer*</excludes>
-                </configuration>
-                <executions>
-                    <execution>
-                        <id>checkstyle</id>
-                        <phase>verify</phase>
-                        <goals>
-                            <goal>checkstyle</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
+      <!-- Checkstyle -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+        <version>2.9.1</version>
+        <configuration>
+          <consoleOutput>true</consoleOutput>
+          <configLocation>checkstyle.xml</configLocation>
+          <failsOnError>true</failsOnError>
+          <excludes>**/HbsServer*</excludes>
+        </configuration>
+        <executions>
+          <execution>
+            <id>checkstyle</id>
+            <phase>none</phase>
+            <goals>
+              <goal>checkstyle</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
 
             <!-- Coveralls -->
             <plugin>

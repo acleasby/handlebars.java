@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -269,7 +269,7 @@ public enum I18nHelper implements Helper<String> {
      * @return A valid I18n message.
      */
     private String message(final String message) {
-      String escapedMessage = Handlebars.Utils.escapeExpression(message);
+      CharSequence escapedMessage = Handlebars.Utils.escapeExpression(message);
       Matcher matcher = pattern.matcher(escapedMessage);
       StringBuffer result = new StringBuffer();
       while (matcher.find()) {

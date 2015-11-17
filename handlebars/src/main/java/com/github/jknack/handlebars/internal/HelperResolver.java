@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -18,7 +18,6 @@
 package com.github.jknack.handlebars.internal;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -28,6 +27,7 @@ import java.util.Map.Entry;
 
 import com.github.jknack.handlebars.Context;
 import com.github.jknack.handlebars.Handlebars;
+import com.github.jknack.handlebars.HandlebarsException;
 import com.github.jknack.handlebars.Helper;
 import com.github.jknack.handlebars.HelperRegistry;
 import com.github.jknack.handlebars.TagType;
@@ -51,6 +51,12 @@ abstract class HelperResolver extends BaseTemplate {
    */
   protected Map<String, Object> hash = Collections.emptyMap();
 
+  /** Param's size. */
+  protected int paramSize;
+
+  /** Hash's size. */
+  protected int hashSize;
+
   /**
    * Empty parameters.
    */
@@ -73,6 +79,9 @@ abstract class HelperResolver extends BaseTemplate {
    * @throws IOException If param can't be applied.
    */
   protected Map<String, Object> hash(final Context context) throws IOException {
+    if (hashSize == 0) {
+      return Collections.emptyMap();
+    }
     Map<String, Object> result = new LinkedHashMap<String, Object>();
     for (Entry<String, Object> entry : hash.entrySet()) {
       Object value = entry.getValue();
@@ -85,19 +94,37 @@ abstract class HelperResolver extends BaseTemplate {
   /**
    * Build a parameter list by looking for values in the current context.
    *
-   * @param scope The current context.
+   * @param ctx The current context.
    * @return A parameter list with values in the current context.
    * @throws IOException If param can't be applied.
    */
-  protected Object[] params(final Context scope) throws IOException {
-    if (params.size() <= 1) {
+  protected Object[] params(final Context ctx) throws IOException {
+    if (paramSize <= 1) {
       return PARAMS;
     }
-    Object[] values = new Object[params.size() - 1];
-    for (int i = 1; i < params.size(); i++) {
+    Object[] values = new Object[paramSize - 1];
+    for (int i = 1; i < paramSize; i++) {
       Object value = params.get(i);
-      Object resolved = ParamType.parse(scope, value);
+      Object resolved = ParamType.parse(ctx, value);
       values[i - 1] = resolved == null && handlebars.stringParams()
+          ? params.get(i) : resolved;
+    }
+    return values;
+  }
+
+  /**
+   * Build a parameter list by looking for values in the current context.
+   *
+   * @param ctx The current context.
+   * @return A parameter list with values in the current context.
+   * @throws IOException If param can't be applied.
+   */
+  protected Object[] decoParams(final Context ctx) throws IOException {
+    Object[] values = new Object[paramSize];
+    for (int i = 0; i < paramSize; i++) {
+      Object value = params.get(i);
+      Object resolved = ParamType.parse(ctx, value);
+      values[i] = resolved == null && handlebars.stringParams()
           ? value : resolved;
     }
     return values;
@@ -112,22 +139,11 @@ abstract class HelperResolver extends BaseTemplate {
    * @throws IOException If param can't be applied.
    */
   protected Object determineContext(final Context context) throws IOException {
-    if (params.size() == 0) {
+    if (paramSize == 0) {
       return context.model();
     }
     Object value = params.get(0);
-    value = ParamType.parse(context, value);
-    return value;
-  }
-
-  /**
-   * Transform the given value (if applies).
-   *
-   * @param value The candidate value.
-   * @return The value transformed (if applies).
-   */
-  protected Object transform(final Object value) {
-    return Transformer.transform(value);
+    return ParamType.parse(context, value);
   }
 
   /**
@@ -138,12 +154,11 @@ abstract class HelperResolver extends BaseTemplate {
    */
   protected Helper<Object> helper(final String name) {
     Helper<Object> helper = handlebars.helper(name);
-    if (helper == null && (params.size() > 0 || hash.size() > 0)) {
-      Helper<Object> helperMissing =
-          handlebars.helper(HelperRegistry.HELPER_MISSING);
+    if (helper == null && (paramSize > 0 || hashSize > 0)) {
+      Helper<Object> helperMissing = handlebars.helper(HelperRegistry.HELPER_MISSING);
       if (helperMissing == null) {
-        throw new IllegalArgumentException("could not find helper: '" + name
-            + "'");
+        throw new HandlebarsException(
+            new IllegalArgumentException("could not find helper: '" + name + "'"));
       }
       helper = helperMissing;
     }
@@ -160,8 +175,9 @@ abstract class HelperResolver extends BaseTemplate {
     if (hash == null || hash.size() == 0) {
       this.hash = Collections.emptyMap();
     } else {
-      this.hash = new LinkedHashMap<String, Object>(hash);
+      this.hash = hash;
     }
+    this.hashSize = hash.size();
     return this;
   }
 
@@ -175,18 +191,20 @@ abstract class HelperResolver extends BaseTemplate {
     if (params == null || params.size() == 0) {
       this.params = Collections.emptyList();
     } else {
-      this.params = new ArrayList<Object>(params);
+      this.params = params;
     }
+    this.paramSize = this.params.size();
     return this;
   }
 
   /**
    * Make a string of {@link #params}.
    *
+   * @param params list of params.
    * @return Make a string of {@link #params}.
    */
-  protected String paramsToString() {
-    if (params.size() > 0) {
+  protected String paramsToString(final List<?> params) {
+    if (paramSize > 0) {
       StringBuilder buffer = new StringBuilder();
       String sep = " ";
       for (Object param : params) {
@@ -208,11 +226,15 @@ abstract class HelperResolver extends BaseTemplate {
    * @return Make a string of {@link #hash}.
    */
   protected String hashToString() {
-    if (hash.size() > 0) {
+    if (hashSize > 0) {
       StringBuilder buffer = new StringBuilder();
       String sep = " ";
       for (Entry<String, Object> hash : this.hash.entrySet()) {
-        buffer.append(hash.getKey()).append("=").append(hash.getValue())
+        Object hashValue = hash.getValue();
+        String hashText = hashValue instanceof Variable
+            ? ((Variable) hashValue).text()
+            : hashValue.toString();
+        buffer.append(hash.getKey()).append("=").append(hashText)
             .append(sep);
       }
       buffer.setLength(buffer.length() - sep.length());

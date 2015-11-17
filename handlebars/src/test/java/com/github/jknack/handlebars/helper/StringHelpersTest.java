@@ -25,10 +25,7 @@ import static org.easymock.EasyMock.verify;
 import static org.junit.Assert.assertEquals;
 
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.Set;
+import java.util.*;
 
 import org.apache.commons.lang3.SystemUtils;
 import org.junit.Test;
@@ -149,7 +146,13 @@ public class StringHelpersTest extends AbstractTest {
   @Test
   public void joinIterable() throws IOException {
     shouldCompileTo("{{{join this \", \"}}}", Arrays.asList("6", "7", "8"),
-        $("join", StringHelpers.join), "6, 7, 8");
+            $("join", StringHelpers.join), "6, 7, 8");
+  }
+
+  @Test
+  public void joinEmptyList() throws IOException {
+    shouldCompileTo("{{{join this \", \"}}}", Collections.emptyList(),
+            $("join", StringHelpers.join), "");
   }
 
   @Test
@@ -247,7 +250,7 @@ public class StringHelpersTest extends AbstractTest {
     Template fn = createMock(Template.class);
 
     Options options = new Options.Builder(hbs, substring.name(), TagType.VAR, ctx, fn)
-        .setParams(new Object[]{11})
+        .setParams(new Object[]{11 })
         .build();
 
     assertEquals("substring", substring.name());
@@ -262,7 +265,7 @@ public class StringHelpersTest extends AbstractTest {
     Template fn = createMock(Template.class);
 
     Options options = new Options.Builder(hbs, substring.name(), TagType.VAR, ctx, fn)
-        .setParams(new Object[]{0, 10})
+        .setParams(new Object[]{0, 10 })
         .build();
 
     assertEquals("substring", substring.name());
@@ -324,7 +327,7 @@ public class StringHelpersTest extends AbstractTest {
 
     assertEquals("replace", replace.name());
     assertEquals("Handlebars rocks",
-    		replace.apply("Handlebars ...", options));
+        replace.apply("Handlebars ...", options));
   }
 
   @Test
@@ -483,11 +486,12 @@ public class StringHelpersTest extends AbstractTest {
   public void nullContext() throws IOException {
     Set<Helper<Object>> helpers = new LinkedHashSet<Helper<Object>>(Arrays.asList(StringHelpers
         .values()));
+    helpers.remove(StringHelpers.join);
     helpers.remove(StringHelpers.yesno);
     helpers.remove(StringHelpers.defaultIfEmpty);
 
     Options options = createMock(Options.class);
-    expect(options.isFalsy(anyObject())).andReturn(true).times(helpers.size());
+    expect(options.isFalsy(anyObject())).andReturn(true).times(helpers.size() - 1);
     expect(options.param(0, null)).andReturn(null).times(helpers.size());
 
     replay(options);
@@ -503,12 +507,13 @@ public class StringHelpersTest extends AbstractTest {
   public void nullContextWithDefault() throws IOException {
     Set<Helper<Object>> helpers = new LinkedHashSet<Helper<Object>>(Arrays.asList(StringHelpers
         .values()));
+    helpers.remove(StringHelpers.join);
     helpers.remove(StringHelpers.yesno);
     helpers.remove(StringHelpers.defaultIfEmpty);
 
     String nothing = "nothing";
     Options options = createMock(Options.class);
-    expect(options.isFalsy(anyObject())).andReturn(true).times(helpers.size());
+    expect(options.isFalsy(anyObject())).andReturn(true).times(helpers.size() - 1);
     expect(options.param(0, null)).andReturn(nothing).times(helpers.size());
 
     replay(options);
@@ -524,12 +529,13 @@ public class StringHelpersTest extends AbstractTest {
   public void nullContextWithNumber() throws IOException {
     Set<Helper<Object>> helpers = new LinkedHashSet<Helper<Object>>(Arrays.asList(StringHelpers
         .values()));
+    helpers.remove(StringHelpers.join);
     helpers.remove(StringHelpers.yesno);
     helpers.remove(StringHelpers.defaultIfEmpty);
 
     Object number = 32;
     Options options = createMock(Options.class);
-    expect(options.isFalsy(anyObject())).andReturn(true).times(helpers.size());
+    expect(options.isFalsy(anyObject())).andReturn(true).times(helpers.size() - 1);
     expect(options.param(0, null)).andReturn(number).times(helpers.size());
 
     replay(options);

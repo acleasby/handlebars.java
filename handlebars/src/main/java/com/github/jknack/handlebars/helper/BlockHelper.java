@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -87,8 +87,7 @@ public class BlockHelper implements Helper<Object> {
       hash.putAll(partialHash);
     }
 
-    CharSequence result = options.apply(template, Context.newBuilder(options.context, hash)
-        .build());
+    CharSequence result = options.apply(template, options.context.data(hash));
     Boolean deletePartials = options.hash("delete-after-merge",
         options.handlebars.deletePartialAfterMerge());
     if (deletePartials) {

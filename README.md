@@ -12,13 +12,21 @@ Handlebars provides the power necessary to let you build semantic templates effe
 
 [Mustache](http://mustache.github.com/mustache.5.html) templates are compatible with Handlebars, so you can take a [Mustache](http://mustache.github.com) template, import it into Handlebars, and start taking advantage of the extra Handlebars features.
 
+# Performance
+
+Handlebars.java is a modern and full featured template engine, but also has a very good performance (Hbs):
+
+![Template Comparison](http://jknack.github.io/handlebars.java/images/bench.png)
+
+Benchmark source code is available at: https://github.com/mbosecke/template-benchmark
+
 # Getting Started
  In general, the syntax of **Handlebars** templates is a superset of [Mustache](http://mustache.github.com) templates. For basic syntax, check out the [Mustache manpage](http://mustache.github.com).
  
  The [Handlebars.java blog](http://jknack.github.io/handlebars.java) is a good place for getting started too.
 
 ## Maven
-#### Stable version: **2.0.0**
+#### Stable version: [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.jknack/handlebars/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.jknack/handlebars)
 
 
 ```xml
@@ -29,7 +37,7 @@ Handlebars provides the power necessary to let you build semantic templates effe
   </dependency>
 ```
  
-#### Development version: **2.1.0-SNAPSHOT**
+#### Development version
 
 SNAPSHOT versions are NOT synchronized to Central. If you want to use a snapshot version you need to add the https://oss.sonatype.org/content/repositories/snapshots/ repository to your pom.xml.
 

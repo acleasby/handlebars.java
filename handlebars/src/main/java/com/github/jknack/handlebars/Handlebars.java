@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -29,7 +29,9 @@ import java.io.Reader;
 import java.lang.reflect.Array;
 import java.net.URI;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map.Entry;
 import java.util.Set;
 
@@ -39,6 +41,7 @@ import org.slf4j.Logger;
 import com.github.jknack.handlebars.cache.NullTemplateCache;
 import com.github.jknack.handlebars.cache.TemplateCache;
 import com.github.jknack.handlebars.helper.DefaultHelperRegistry;
+import com.github.jknack.handlebars.internal.FormatterChain;
 import com.github.jknack.handlebars.internal.HbsParserFactory;
 import com.github.jknack.handlebars.io.ClassPathTemplateLoader;
 import com.github.jknack.handlebars.io.CompositeTemplateLoader;
@@ -219,7 +222,7 @@ public class Handlebars implements HelperRegistry {
      * @return The escaped version of the input or the same input if it's a
      *         SafeString.
      */
-    public static String escapeExpression(final CharSequence input) {
+    public static CharSequence escapeExpression(final CharSequence input) {
       if (StringUtils.isEmpty(input)) {
         return "";
       }
@@ -246,6 +249,9 @@ public class Handlebars implements HelperRegistry {
           case '`':
             html.append("&#x60;");
             break;
+          case '=':
+            html.append("&#x3D");
+            break;
           case '&':
             html.append("&amp;");
             break;
@@ -253,7 +259,7 @@ public class Handlebars implements HelperRegistry {
             html.append(ch);
         }
       }
-      return html.toString();
+      return html.length() == input.length() ? input : html;
     }
   }
 
@@ -307,6 +313,7 @@ public class Handlebars implements HelperRegistry {
    * If true, templates will be deleted once applied. Useful, in some advanced template inheritance
    * use cases. Default is: false.
    * At any time you can override the default setup with:
+   *
    * <pre>
    * {{#block "footer" delete-after-merge=true}}
    * </pre>
@@ -334,7 +341,13 @@ public class Handlebars implements HelperRegistry {
   private String endDelimiter = DELIM_END;
 
   /** Location of the handlebars.js file. */
-  private String handlebarsJsFile = "/handlebars-v1.3.0.js";
+  private String handlebarsJsFile = "/handlebars-v4.0.4.js";
+
+  /** List of formatters. */
+  private List<Formatter> formatters = new ArrayList<Formatter>();
+
+  /** Default formatter. */
+  private Formatter.Chain formatter = Formatter.NOOP;
 
   /**
    * Creates a new {@link Handlebars} with no cache.
@@ -528,7 +541,9 @@ public class Handlebars implements HelperRegistry {
    * </ul>
    *
    * Only static methods will be registered as helpers.
-   * <p>Enums are supported too</p>
+   * <p>
+   * Enums are supported too
+   * </p>
    *
    * @param helperSource The helper source. Enums are supported. Required.
    * @return This handlebars object.
@@ -850,14 +865,15 @@ public class Handlebars implements HelperRegistry {
 
   /**
    * If true, templates will be deleted once applied. Useful, in some advanced template inheritance
-   * use cases.  Used by <code>{{#block}} helper</code>. Default is: false.
+   * use cases. Used by <code>{{#block}} helper</code>. Default is: false.
    * At any time you can override the default setup with:
+   *
    * <pre>
    * {{#block "footer" delete-after-merge=true}}
    * </pre>
    *
    * @return True for clearing up templates once they got applied. Used by
-   *      <code>{{#block}} helper</code>.
+   *         <code>{{#block}} helper</code>.
    */
   public boolean deletePartialAfterMerge() {
     return deletePartialAfterMerge;
@@ -865,14 +881,15 @@ public class Handlebars implements HelperRegistry {
 
   /**
    * If true, templates will be deleted once applied. Useful, in some advanced template inheritance
-   * use cases.  Used by <code>{{#block}} helper</code>. Default is: false.
+   * use cases. Used by <code>{{#block}} helper</code>. Default is: false.
    * At any time you can override the default setup with:
+   *
    * <pre>
    * {{#block "footer" delete-after-merge=true}}
    * </pre>
    *
    * @param deletePartialAfterMerge True for clearing up templates once they got applied. Used by
-   *    <code>{{#block}} helper</code>.
+   *        <code>{{#block}} helper</code>.
    *
    * @return This handlebars object.
    */
@@ -883,14 +900,15 @@ public class Handlebars implements HelperRegistry {
 
   /**
    * If true, templates will be deleted once applied. Useful, in some advanced template inheritance
-   * use cases.  Used by <code>{{#block}} helper</code>. Default is: false.
+   * use cases. Used by <code>{{#block}} helper</code>. Default is: false.
    * At any time you can override the default setup with:
+   *
    * <pre>
    * {{#block "footer" delete-after-merge=true}}
    * </pre>
    *
    * @param deletePartialAfterMerge True for clearing up templates once they got applied. Used by
-   *    <code>{{#block}} helper</code>.
+   *        <code>{{#block}} helper</code>.
    */
   public void setDeletePartialAfterMerge(final boolean deletePartialAfterMerge) {
     this.deletePartialAfterMerge = deletePartialAfterMerge;
@@ -998,42 +1016,82 @@ public class Handlebars implements HelperRegistry {
   }
 
   /**
+   * @return A formatter chain.
+   */
+  public Formatter.Chain getFormatter() {
+    return formatter;
+  }
+
+  /**
+   * Add a new variable formatter.
+   *
+   * <pre>
+   *
+   * Handlebars hbs = new Handlebars();
+   *
+   * hbs.with(new Formatter() {
+   *   public Object format(Object value, Chain next) {
+   *    if (value instanceof Date) {
+   *      return ((Date) value).getTime();
+   *    }
+   *    return next.format(value);
+   *   }
+   * });
+   *
+   * </pre>
+   *
+   * @param formatter A formatter.
+   * @return This handlebars object.
+   */
+  public Handlebars with(final Formatter formatter) {
+    notNull(formatter, "A formatter is required.");
+
+    formatters.add(formatter);
+
+    this.formatter = new FormatterChain(formatters);
+
+    return this;
+  }
+
+  /**
    * Set the handlebars.js location used it to compile/precompile template to JavaScript.
    * <p>
-   * Using handlebars.js 2.x:
+   * Using handlebars.js 4.x:
    * </p>
+   *
    * <pre>
    *   Handlebars handlebars = new Handlebars()
-   *      .withHandlberasJs("handlebars-v2.0.0.js");
+   *      .handlebarsJsFile("handlebars-v4.0.4.js");
    * </pre>
    * <p>
    * Using handlebars.js 1.x:
    * </p>
+   *
    * <pre>
    *   Handlebars handlebars = new Handlebars()
-   *      .withHandlberasJs("handlebars-v1.3.0.js");
+   *      .handlebarsJsFile("handlebars-v1.3.0.js");
    * </pre>
    *
-   * Default handlebars.js is <code>handlebars-v1.3.0.js</code>.
+   * Default handlebars.js is <code>handlebars-v4.0.4.js</code>.
    *
    * @param location A classpath location of the handlebar.js file.
    * @return This instance of Handlebars.
    */
   public Handlebars handlebarsJsFile(final String location) {
-   this.handlebarsJsFile = notEmpty(location, "A handlebars.js location is required.");
-   if (!this.handlebarsJsFile.startsWith("/")) {
-     this.handlebarsJsFile = "/" + handlebarsJsFile;
-   }
-   URL resource = getClass().getResource(handlebarsJsFile);
-   if (resource == null) {
-     throw new IllegalArgumentException("File not found: " + handlebarsJsFile);
-   }
-   return this;
+    this.handlebarsJsFile = notEmpty(location, "A handlebars.js location is required.");
+    if (!this.handlebarsJsFile.startsWith("/")) {
+      this.handlebarsJsFile = "/" + handlebarsJsFile;
+    }
+    URL resource = getClass().getResource(handlebarsJsFile);
+    if (resource == null) {
+      throw new IllegalArgumentException("File not found: " + handlebarsJsFile);
+    }
+    return this;
   }
 
   /**
    * @return Classpath location of the handlebars.js file. Default is:
-   *      <code>handlebars-v1.3.0.js</code>
+   *         <code>handlebars-v4.0.4.js</code>
    */
   public String handlebarsJsFile() {
     return handlebarsJsFile;
@@ -1042,7 +1100,7 @@ public class Handlebars implements HelperRegistry {
   /**
    * Return a parser factory.
    *
-   * @return A parsert factory.
+   * @return A parser factory.
    */
   public ParserFactory getParserFactory() {
     return parserFactory;
@@ -1135,6 +1193,17 @@ public class Handlebars implements HelperRegistry {
    */
   public static void error(final String message) {
     logger.error(message);
+  }
+
+  @Override
+  public Decorator decorator(final String name) {
+    return registry.decorator(name);
+  }
+
+  @Override
+  public Handlebars registerDecorator(final String name, final Decorator decorator) {
+    registry.registerDecorator(name, decorator);
+    return this;
   }
 
 }

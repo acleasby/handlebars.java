@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -20,10 +20,12 @@ package com.github.jknack.handlebars.io;
 import static org.apache.commons.lang3.Validate.notEmpty;
 import static org.apache.commons.lang3.Validate.notNull;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.net.JarURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
 
@@ -45,7 +47,7 @@ public class URLTemplateSource extends AbstractTemplateSource {
   /**
    * The last modified date.
    */
-  private long lastModified;
+  private Long lastModified;
 
   /**
    * The file's name.
@@ -61,7 +63,6 @@ public class URLTemplateSource extends AbstractTemplateSource {
   public URLTemplateSource(final String filename, final URL resource) {
     this.filename = notEmpty(filename, "The filename is required.");
     this.resource = notNull(resource, "A resource is required.");
-    this.lastModified = lastModified(resource);
   }
 
   @Override
@@ -91,7 +92,12 @@ public class URLTemplateSource extends AbstractTemplateSource {
 
   @Override
   public long lastModified() {
-    return lastModified;
+    synchronized (this) {
+      if (lastModified == null) {
+        lastModified = lastModified(resource);
+      }
+      return lastModified;
+    }
   }
 
   /**
@@ -116,6 +122,14 @@ public class URLTemplateSource extends AbstractTemplateSource {
     URLConnection uc = null;
     try {
       uc = resource.openConnection();
+      if (uc instanceof JarURLConnection) {
+        URL jarURL = ((JarURLConnection) uc).getJarFileURL();
+        if (jarURL.getProtocol().equals("file")) {
+          uc = null;
+          String file = jarURL.getFile();
+          return new File(file).lastModified();
+        }
+      }
       return uc.getLastModified();
     } catch (IOException ex) {
       Handlebars.warn("Can't get last modified date of: %s", resource);

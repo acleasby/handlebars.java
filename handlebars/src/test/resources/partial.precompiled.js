@@ -1,14 +1,9 @@
 (function() {
-  var template = Handlebars.template(function (Handlebars,depth0,helpers,partials,data) {
-  this.compilerInfo = [4,'>= 1.0.0'];
-helpers = this.merge(helpers, Handlebars.helpers); partials = this.merge(partials, Handlebars.partials); data = data || {};
-  var stack1, self=this;
+  var template = Handlebars.template({"compiler":[7,">= 4.0.0"],"main":function(container,depth0,helpers,partials,data) {
+    var stack1;
 
-
-  stack1 = self.invokePartial(partials['partial/child'], 'partial/child', depth0, helpers, partials, data);
-  if(stack1 || stack1 === 0) { return stack1; }
-  else { return ''; }
-  });
+  return ((stack1 = container.invokePartial(partials["partial/child"],depth0,{"name":"partial/child","data":data,"helpers":helpers,"partials":partials,"decorators":container.decorators})) != null ? stack1 : "");
+},"usePartial":true,"useData":true});
   var templates = Handlebars.templates = Handlebars.templates || {};
   templates['root'] = template;
   var partials = Handlebars.partials = Handlebars.partials || {};

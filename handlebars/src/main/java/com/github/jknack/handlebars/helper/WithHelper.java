@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -21,6 +21,7 @@ import java.io.IOException;
 
 import com.github.jknack.handlebars.Helper;
 import com.github.jknack.handlebars.Options;
+import com.github.jknack.handlebars.Options.Buffer;
 
 /**
  * <p>
@@ -50,10 +51,12 @@ public class WithHelper implements Helper<Object> {
   @Override
   public CharSequence apply(final Object context, final Options options)
       throws IOException {
+    Buffer buffer = options.buffer();
     if (options.isFalsy(context)) {
-      return options.inverse(context);
+      buffer.append(options.inverse(context));
     } else {
-      return options.fn(context);
+      buffer.append(options.fn(context));
     }
+    return buffer;
   }
 }

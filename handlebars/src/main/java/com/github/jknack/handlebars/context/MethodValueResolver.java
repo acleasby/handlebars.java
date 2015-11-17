@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -41,7 +41,8 @@ public class MethodValueResolver extends MemberValueResolver<Method> {
 
   @Override
   public boolean matches(final Method method, final String name) {
-    return isPublic(method) && method.getName().equals(name);
+    int parameterCount = method.getParameterTypes().length;
+    return isPublic(method) && method.getName().equals(name) && parameterCount == 0;
   }
 
   @Override
@@ -84,10 +85,9 @@ public class MethodValueResolver extends MemberValueResolver<Method> {
       }
       if (clazz.getSuperclass() != null) {
         members(clazz.getSuperclass(), members);
-      } else if (clazz.isInterface()) {
-        for (Class<?> superIfc : clazz.getInterfaces()) {
-          members(superIfc, members);
-        }
+      }
+      for (Class<?> superIfc : clazz.getInterfaces()) {
+        members(superIfc, members);
       }
     }
   }

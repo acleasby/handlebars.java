@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -42,6 +42,11 @@ public enum NullTemplateCache implements TemplateCache {
 
   @Override
   public void evict(final TemplateSource source) {
+  }
+
+  @Override
+  public NullTemplateCache setReload(final boolean reload) {
+    return this;
   }
 
   @Override

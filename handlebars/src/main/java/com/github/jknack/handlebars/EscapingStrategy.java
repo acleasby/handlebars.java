@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013 Tristan Burch
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -46,7 +46,7 @@ public interface EscapingStrategy {
    */
   EscapingStrategy HTML_ENTITY = new EscapingStrategy() {
     @Override
-    public String escape(final CharSequence value) {
+    public CharSequence escape(final CharSequence value) {
       return Handlebars.Utils.escapeExpression(value);
     }
   };
@@ -54,7 +54,7 @@ public interface EscapingStrategy {
   /** Escape variable for CSV. */
   EscapingStrategy CSV = new EscapingStrategy() {
     @Override
-    public String escape(final CharSequence value) {
+    public CharSequence escape(final CharSequence value) {
       return value == null ? null : StringEscapeUtils.escapeCsv(value.toString());
     }
   };
@@ -62,7 +62,7 @@ public interface EscapingStrategy {
   /** Escape variable for XML. */
   EscapingStrategy XML = new EscapingStrategy() {
     @Override
-    public String escape(final CharSequence value) {
+    public CharSequence escape(final CharSequence value) {
       return value == null ? null : StringEscapeUtils.escapeXml(value.toString());
     }
   };
@@ -70,8 +70,16 @@ public interface EscapingStrategy {
   /** Escape variable for JavaScript. */
   EscapingStrategy JS = new EscapingStrategy() {
     @Override
-    public String escape(final CharSequence value) {
+    public CharSequence escape(final CharSequence value) {
       return value == null ? null : StringEscapeUtils.escapeEcmaScript(value.toString());
+    }
+  };
+
+  /** NOOP escaping. */
+  EscapingStrategy NOOP = new EscapingStrategy() {
+    @Override
+    public CharSequence escape(final CharSequence value) {
+      return value;
     }
   };
 
@@ -81,6 +89,6 @@ public interface EscapingStrategy {
    * @param value the character sequence to be escaped.
    * @return the escaped character sequence.
    */
-  String escape(CharSequence value);
+  CharSequence escape(CharSequence value);
 
 }

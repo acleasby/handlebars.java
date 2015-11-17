@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -47,6 +47,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
+import com.github.jknack.handlebars.Decorator;
 import com.github.jknack.handlebars.Handlebars;
 import com.github.jknack.handlebars.Helper;
 import com.github.jknack.handlebars.HelperRegistry;
@@ -64,8 +65,10 @@ public class DefaultHelperRegistry implements HelperRegistry {
   /**
    * The helper registry.
    */
-  private final Map<String, Helper<?>> helpers =
-      new HashMap<String, Helper<?>>();
+  private final Map<String, Helper<?>> helpers = new HashMap<String, Helper<?>>();
+
+  /** Decorators. */
+  private final Map<String, Decorator> decorators = new HashMap<>();
 
   /**
    * A Handlebars.js implementation.
@@ -187,8 +190,6 @@ public class DefaultHelperRegistry implements HelperRegistry {
    * @param clazz The helper source class.
    */
   private void registerDynamicHelper(final Object source, final Class<?> clazz) {
-    int size = helpers.size();
-    int replaced = 0;
     if (clazz != Object.class) {
       Set<String> overloaded = new HashSet<String>();
       // Keep backing up the inheritance hierarchy.
@@ -199,17 +200,12 @@ public class DefaultHelperRegistry implements HelperRegistry {
         if (isPublic && CharSequence.class.isAssignableFrom(method.getReturnType())) {
           boolean isStatic = Modifier.isStatic(method.getModifiers());
           if (source != null || isStatic) {
-            if (helpers.containsKey(helperName)) {
-              replaced++;
-            }
             isTrue(overloaded.add(helperName), "name conflict found: " + helperName);
             registerHelper(helperName, new MethodHelper(method, source));
           }
         }
       }
     }
-    isTrue((size + replaced) != helpers.size(),
-        "No helper method was found in: " + clazz.getName());
   }
 
   /**
@@ -228,6 +224,29 @@ public class DefaultHelperRegistry implements HelperRegistry {
     registry.registerHelper(PrecompileHelper.NAME, PrecompileHelper.INSTANCE);
     registry.registerHelper("i18n", I18nHelper.i18n);
     registry.registerHelper("i18nJs", I18nHelper.i18nJs);
+    registry.registerHelper(LookupHelper.NAME, LookupHelper.INSTANCE);
+    registry.registerHelper(LogHelper.NAME, LogHelper.INSTANCE);
+
+    // decorator
+    registry.registerDecorator("inline", InlineDecorator.INSTANCE);
+  }
+
+  @Override
+  public Decorator decorator(final String name) {
+    notEmpty(name, "A decorator's name is required.");
+    return decorators.get(name);
+  }
+
+  @Override
+  public HelperRegistry registerDecorator(final String name, final Decorator decorator) {
+    notEmpty(name, "A decorator's name is required.");
+    notNull(decorator, "A decorator is required.");
+
+    Decorator old = decorators.put(name, decorator);
+    if (old != null) {
+      Handlebars.warn("Decorator '%s' has been replaced by '%s'", name, decorator);
+    }
+    return this;
   }
 
 }

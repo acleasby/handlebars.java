@@ -21,7 +21,7 @@ lexer grammar HbsLexer;
 
   private boolean consumeUntil(final String token) {
     int offset = 0;
-    while(!isEOF(offset) && !ahead(token, offset) &&
+    while(!isEOF(offset) && !(ahead("\\" + token, offset) || ahead(token, offset)) &&
       !isWhite(_input.LA(offset + 1))) {
       offset+=1;
     }
@@ -159,15 +159,30 @@ COMMENT
   ;
 
 START_AMP
- : {startToken(start, "&")}? . -> pushMode(VAR)
+  :
+    {startToken(start, "&")}? . -> pushMode(VAR)
+  ;
+
+END_RAW_BLOCK
+ : {startToken(start, "{{/")}? . -> pushMode(VAR)
  ;
 
+START_RAW
+  :
+    {startToken(start, "{{")}? . -> pushMode(VAR)
+  ;
+
 START_T
- : {startToken(start, "{")}? . -> pushMode(VAR)
- ;
+  :
+    {startToken(start, "{")}? . -> pushMode(VAR)
+  ;
 
 UNLESS
  : {startToken(start, "^")}? . -> pushMode(VAR)
+ ;
+
+START_PARTIAL_BLOCK
+ : {startToken(start, "#>")}? . -> pushMode(VAR)
  ;
 
 START_BLOCK
@@ -179,7 +194,7 @@ START_DELIM
  ;
 
 START_PARTIAL
- : {startToken(start, ">")}? . -> pushMode(PARTIAL)
+ : {startToken(start, ">")}? . -> pushMode(VAR)
  ;
 
 END_BLOCK
@@ -204,56 +219,77 @@ NL
 mode SET_DELIMS;
 
 END_DELIM
-  : {endToken("=" + end)}? . -> popMode
+  :
+    {endToken("=" + end)}? . -> popMode
   ;
 
 WS_DELIM
-  : [ \t\r\n]
-  ;
-
-DELIM: .;
-
-mode PARTIAL;
-
-PATH
   :
-  (
-    '[' PATH_SEGMENT ']'
-  | PATH_SEGMENT
-  ) -> mode(VAR)
+    [ \t\r\n]
   ;
 
-fragment
-PATH_SEGMENT
-  : [a-zA-Z0-9_$'/.:\-]+
+DELIM
+  :
+    .
   ;
 
-WS_PATH
-  : [ \t\r\n] -> skip
+mode RAW;
+
+RAW_SPACE
+  :
+   [ \t\r\n]
+  ;
+
+RAW_CONTENT
+  :
+    {consumeUntil(start + "{{/")}? . -> popMode
   ;
 
 mode VAR;
 
+END_RAW
+  :
+    {endToken(end, "}}")}? . -> mode(RAW)
+  ;
+
 END_T
- : {endToken(end, "}")}? . -> popMode
- ;
+  :
+    {endToken(end, "}")}? . -> popMode
+  ;
 
 END
- : {endToken(end)}? . -> mode(DEFAULT_MODE)
- ;
+  :
+    {endToken(end)}? . -> mode(DEFAULT_MODE)
+  ;
+
+DECORATOR
+  :
+    '*'
+  ;
+
+AS
+  :
+    'as'
+  ;
+
+PIPE
+  :
+    '|'
+  ;
 
 DOUBLE_STRING
- :
-  '"' ( '\\"' | ~[\n] )*? '"'
- ;
+  :
+    '"' ( '\\"' | ~[\n] )*? '"'
+  ;
 
 SINGLE_STRING
- :
-  '\'' ( '\\\'' | ~[\n] )*? '\''
- ;
+  :
+    '\'' ( '\\\'' | ~[\n] )*? '\''
+  ;
 
 EQ
-  : '='
+  :
+    '='
   ;
 
 INT
@@ -276,12 +312,24 @@ QID
  :
    '../' QID
  | '..'
+ | './' QID
  | '.'
  | '[' ID ']' ID_SEPARATOR QID
  | '[' ID ']'
  | ID ID_SEPARATOR QID
  | ID
  ;
+
+PATH
+  :
+    '[' PATH_SEGMENT ']'
+  | PATH_SEGMENT
+  ;
+
+fragment
+PATH_SEGMENT
+  : [a-zA-Z0-9_$'/.:\-]+
+  ;
 
 fragment
 ID_SEPARATOR
@@ -291,6 +339,7 @@ fragment
 ID
   :
   ID_START ID_SUFFIX*
+  | ID_ESCAPE ID_SUFFIX*
  ;
 
 fragment
@@ -302,7 +351,7 @@ ID_START
 fragment
 ID_SUFFIX
   :
-    ID_ESCAPE
+    '.' ID_ESCAPE
   | ID_START
   | ID_PART
   | '-'
@@ -311,7 +360,7 @@ ID_SUFFIX
 fragment
 ID_ESCAPE
   :
-   '.' '[' ~[\r\n]+? ']'
+    '[' ~[\]]+? ']'
   ;
 
 fragment

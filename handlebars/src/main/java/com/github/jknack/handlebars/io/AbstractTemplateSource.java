@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -30,7 +30,7 @@ public abstract class AbstractTemplateSource implements TemplateSource {
 
   @Override
   public int hashCode() {
-    return new HashCodeBuilder().append(filename()).append(lastModified()).build();
+    return new HashCodeBuilder().append(filename()).build();
   }
 
   @Override
@@ -40,7 +40,7 @@ public abstract class AbstractTemplateSource implements TemplateSource {
     }
     if (obj instanceof TemplateSource) {
       TemplateSource that = (TemplateSource) obj;
-      return filename().equals(that.filename()) && lastModified() == that.lastModified();
+      return filename().equals(that.filename());
     }
     return false;
   }

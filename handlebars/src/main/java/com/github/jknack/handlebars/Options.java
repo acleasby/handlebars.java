@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -17,11 +17,11 @@
  */
 package com.github.jknack.handlebars;
 
-import static org.apache.commons.lang3.Validate.notEmpty;
-import static org.apache.commons.lang3.Validate.notNull;
-
 import java.io.IOException;
+import java.io.Writer;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -48,6 +48,125 @@ import java.util.Set;
  * @since 0.1.0
  */
 public class Options {
+
+  /**
+   * Buffer like use it to increase rendering time while using helpers.
+   *
+   * @author edgar
+   * @since 2.3.2
+   */
+  public interface Buffer extends Appendable, CharSequence {
+  }
+
+  /**
+   * This buffer will write into the underlying writer. It won't be any visible output and
+   * {@link #toString()} returns an empty string.
+   *
+   * @author edgar
+   * @since 2.3.2
+   */
+  public static class NativeBuffer implements Buffer {
+
+    /** Writer. */
+    private Writer writer;
+
+    /**
+     * Creates a new {@link NativeBuffer}.
+     *
+     * @param writer A writer. Required.
+     */
+    public NativeBuffer(final Writer writer) {
+      this.writer = writer;
+    }
+
+    @Override
+    public Appendable append(final CharSequence csq) throws IOException {
+      writer.append(csq);
+      return this;
+    }
+
+    @Override
+    public Appendable append(final CharSequence csq, final int start, final int end)
+        throws IOException {
+      writer.append(csq, start, end);
+      return this;
+    }
+
+    @Override
+    public Appendable append(final char c) throws IOException {
+      writer.append(c);
+      return this;
+    }
+
+    @Override
+    public int length() {
+      // no need to merge anything
+      return 0;
+    }
+
+    @Override
+    public char charAt(final int index) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public CharSequence subSequence(final int start, final int end) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String toString() {
+      // no need to merge anything
+      return "";
+    }
+  }
+
+  /**
+   * A {@link StringBuilder} implementation.
+   *
+   * @author edgar
+   * @since 2.3.2
+   */
+  public static class InMemoryBuffer implements Buffer {
+
+    /** A buffer. */
+    private StringBuilder buffer = new StringBuilder();
+
+    @Override
+    public Appendable append(final CharSequence csq) throws IOException {
+      buffer.append(csq);
+      return this;
+    }
+
+    @Override
+    public Appendable append(final CharSequence csq, final int start, final int end)
+        throws IOException {
+      buffer.append(csq, start, end);
+      return this;
+    }
+
+    @Override
+    public Appendable append(final char c) throws IOException {
+      buffer.append(c);
+      return this;
+    }
+
+    @Override
+    public int length() {
+      return buffer.length();
+    }
+
+    @Override
+    public char charAt(final int index) {
+      return buffer.charAt(index);
+    }
+
+    @Override
+    public CharSequence subSequence(final int start, final int end) {
+      return buffer.subSequence(start, end);
+    }
+
+  }
 
   /**
    * An {@link Options} builder.
@@ -97,6 +216,12 @@ public class Options {
     /** The name of the helper. */
     private String helperName;
 
+    /** Output writer. */
+    private Writer writer;
+
+    /** Block params. */
+    private List<String> blockParams = Collections.emptyList();
+
     /**
      * Creates a new {@link Builder}.
      *
@@ -108,11 +233,11 @@ public class Options {
      */
     public Builder(final Handlebars handlebars, final String helperName, final TagType tagType,
         final Context context, final Template fn) {
-      this.handlebars = notNull(handlebars, "The handlebars is required.");
-      this.helperName = notEmpty(helperName, "The helperName is required.");
-      this.tagType = notNull(tagType, "The tag type is required.");
-      this.context = notNull(context, "The context is required.");
-      this.fn = notNull(fn, "The fn template is required.");
+      this.handlebars = handlebars;
+      this.helperName = helperName;
+      this.tagType = tagType;
+      this.context = context;
+      this.fn = fn;
     }
 
     /**
@@ -122,7 +247,8 @@ public class Options {
      */
     public Options build() {
       Options options = new Options(handlebars, helperName, tagType, context, fn, inverse, params,
-          hash);
+          hash, blockParams);
+      options.writer = writer;
       // clear out references
       handlebars = null;
       tagType = null;
@@ -131,6 +257,7 @@ public class Options {
       inverse = null;
       params = null;
       hash = null;
+      writer = null;
       return options;
     }
 
@@ -141,7 +268,18 @@ public class Options {
      * @return This builder.
      */
     public Builder setHash(final Map<String, Object> hash) {
-      this.hash = notNull(hash, "The hash is required.");
+      this.hash = hash;
+      return this;
+    }
+
+    /**
+     * Set the options block params.
+     *
+     * @param blockParams A block params. Required.
+     * @return This builder.
+     */
+    public Builder setBlockParams(final List<String> blockParams) {
+      this.blockParams = blockParams;
       return this;
     }
 
@@ -152,7 +290,7 @@ public class Options {
      * @return This builder.
      */
     public Builder setInverse(final Template inverse) {
-      this.inverse = notNull(inverse, "The inverse is required.");
+      this.inverse = inverse;
       return this;
     }
 
@@ -163,9 +301,21 @@ public class Options {
      * @return This builder.
      */
     public Builder setParams(final Object[] params) {
-      this.params = notNull(params, "The params is required.");
+      this.params = params;
       return this;
     }
+
+    /**
+     * Set a writer, useful to improve performance.
+     *
+     * @param writer A writer. Required.
+     * @return This builder.
+     */
+    public Builder setWriter(final Writer writer) {
+      this.writer = writer;
+      return this;
+    }
+
   }
 
   /**
@@ -206,6 +356,12 @@ public class Options {
   /** The name of the helper. */
   public final String helperName;
 
+  /** Output writer. */
+  private Writer writer;
+
+  /** Block param names. */
+  public final List<String> blockParams;
+
   /**
    * Creates a new Handlebars {@link Options}.
    *
@@ -217,18 +373,20 @@ public class Options {
    * @param inverse The inverse template function. Required.
    * @param params The parameters. Required.
    * @param hash The optional hash. Required.
+   * @param blockParams The block param names. Required.
    */
   public Options(final Handlebars handlebars, final String helperName, final TagType tagType,
       final Context context, final Template fn, final Template inverse, final Object[] params,
-      final Map<String, Object> hash) {
-    this.handlebars = notNull(handlebars, "The handlebars is required.");
-    this.helperName = notEmpty(helperName, "The helperName is required.");
-    this.tagType = notNull(tagType, "The tag type is required.");
-    this.context = notNull(context, "The context is required");
-    this.fn = notNull(fn, "The template is required.");
-    this.inverse = notNull(inverse, "The inverse template is required.");
-    this.params = notNull(params, "The parameters are required.");
-    this.hash = notNull(hash, "The hash are required.");
+      final Map<String, Object> hash, final List<String> blockParams) {
+    this.handlebars = handlebars;
+    this.helperName = helperName;
+    this.tagType = tagType;
+    this.context = context;
+    this.fn = fn;
+    this.inverse = inverse;
+    this.params = params;
+    this.hash = hash;
+    this.blockParams = blockParams;
   }
 
   /**
@@ -238,7 +396,7 @@ public class Options {
    * @throws IOException If a resource cannot be loaded.
    */
   public CharSequence fn() throws IOException {
-    return fn(context);
+    return apply(fn, context, blockParams(context.model));
   }
 
   /**
@@ -249,7 +407,20 @@ public class Options {
    * @throws IOException If a resource cannot be loaded.
    */
   public CharSequence fn(final Object context) throws IOException {
-    return apply(fn, context);
+    Context ctx = wrap(context);
+    return apply(fn, ctx, blockParams(ctx.model));
+  }
+
+  /**
+   * Apply the {@link #fn} template using the provided context.
+   *
+   * @param context The context to use.
+   * @return The resulting text.
+   * @throws IOException If a resource cannot be loaded.
+   */
+  public CharSequence fn(final Context context) throws IOException {
+    Context ctx = wrap(context);
+    return apply(fn, ctx, blockParams(ctx.model));
   }
 
   /**
@@ -259,7 +430,7 @@ public class Options {
    * @throws IOException If a resource cannot be loaded.
    */
   public CharSequence inverse() throws IOException {
-    return inverse(context);
+    return apply(inverse, context, blockParams(context.model));
   }
 
   /**
@@ -270,7 +441,20 @@ public class Options {
    * @throws IOException If a resource cannot be loaded.
    */
   public CharSequence inverse(final Object context) throws IOException {
-    return apply(inverse, context);
+    Context ctx = wrap(context);
+    return apply(inverse, ctx, blockParams(ctx.model));
+  }
+
+  /**
+   * Apply the {@link #inverse} template using the provided context.
+   *
+   * @param context The context to use.
+   * @return The resulting text.
+   * @throws IOException If a resource cannot be loaded.
+   */
+  public CharSequence inverse(final Context context) throws IOException {
+    Context ctx = wrap(context);
+    return apply(inverse, ctx, blockParams(ctx.model));
   }
 
   /**
@@ -283,7 +467,56 @@ public class Options {
    * @throws IOException If a resource cannot be loaded.
    */
   public CharSequence apply(final Template template, final Object context) throws IOException {
-    return template.apply(wrap(context));
+    Context ctx = wrap(context);
+    return apply(template, ctx, blockParams(ctx.model));
+  }
+
+  /**
+   * Apply the given template to the provided context. The context stack is
+   * propagated allowing the access to the whole stack.
+   *
+   * @param template The template.
+   * @param context The context object.
+   * @return The resulting text.
+   * @throws IOException If a resource cannot be loaded.
+   */
+  public CharSequence apply(final Template template, final Context context) throws IOException {
+    Context ctx = wrap(context);
+    return apply(template, ctx, blockParams(ctx.model));
+  }
+
+  /**
+   * Apply the given template to the provided context. The context stack is
+   * propagated allowing the access to the whole stack.
+   *
+   * @param template The template.
+   * @param context The context object.
+   * @param blockParams The block param values.
+   * @return The resulting text.
+   * @throws IOException If a resource cannot be loaded.
+   */
+  public CharSequence apply(final Template template, final Context context,
+      final List<Object> blockParams) throws IOException {
+    Context ctx = context;
+    if (this.blockParams.size() > 0) {
+      ctx = Context.newBlockParamContext(context, this.blockParams, blockParams);
+    }
+    return template.apply(ctx);
+  }
+
+  /**
+   * Apply the given template to the provided context. The context stack is
+   * propagated allowing the access to the whole stack.
+   *
+   * @param template The template.
+   * @param context The context object.
+   * @param blockParams The block param values.
+   * @return The resulting text.
+   * @throws IOException If a resource cannot be loaded.
+   */
+  public CharSequence apply(final Template template, final Object context,
+      final List<Object> blockParams) throws IOException {
+    return apply(template, wrap(context), blockParams);
   }
 
   /**
@@ -295,7 +528,7 @@ public class Options {
    * @throws IOException If a resource cannot be loaded.
    */
   public CharSequence apply(final Template template) throws IOException {
-    return apply(template, context);
+    return apply(template, context, blockParams(context.model));
   }
 
   /**
@@ -465,16 +698,28 @@ public class Options {
    *         context already.
    */
   public Context wrap(final Object model) {
-    if (model == context) {
-      return context;
-    }
-    if (model == context.model()) {
+    if (model == context.model || model == context) {
       return context;
     }
     if (model instanceof Context) {
       return (Context) model;
     }
     return Context.newContext(context, model);
+  }
+
+  /**
+   * Creates a {@link Context} from the given model. If the object is a context
+   * already the same object will be returned.
+   *
+   * @param context The model object.
+   * @return A context representing the model or the same model if it's a
+   *         context already.
+   */
+  private Context wrap(final Context context) {
+    if (context != null) {
+      return context;
+    }
+    return Context.newContext(null);
   }
 
   /**
@@ -520,4 +765,39 @@ public class Options {
     return (Map<String, Template>) data(Context.PARTIALS);
   }
 
+  /**
+   * Get a Buffer which probably increase rendering time (performance). Usage:
+   *
+   * <pre>
+   * public CharSequence helper(Object ctx, Options options) {
+   *   Buffer buffer = options.buffer();
+   *   ...
+   *   buffer.append(...);
+   *   ...
+   *   return buffer;
+   * }
+   * </pre>
+   *
+   * Something to keep in mind is that when using the native buffer there won't be any visible
+   * output. For example {@link NativeBuffer#toString()} results in an empty string, that's expected
+   * because the content is written directly to the underlying writer.
+   *
+   * @return A new buffer.
+   */
+  public Buffer buffer() {
+    return writer == null ? new InMemoryBuffer() : new NativeBuffer(writer);
+  }
+
+  /**
+   * Build block params from given context.
+   *
+   * @param context A context.
+   * @return A block params.
+   */
+  private List<Object> blockParams(final Object context) {
+    if (this.blockParams.size() == 1) {
+      return Arrays.<Object> asList(context);
+    }
+    return Collections.emptyList();
+  }
 }

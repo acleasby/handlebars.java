@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -111,11 +111,11 @@ public class PrecompilePlugin extends HandlebarsPlugin {
     @Parameter(defaultValue = "${project.build.directory}/${project.build.finalName}/js/helpers.js")
     private String output;
 
-    /**
-     * The handlebars js file.
-     */
-    @Parameter(defaultValue = "/handlebars-v1.3.0.js")
-    private String handlebarsJsFile;
+  /**
+   * The handlebars js file.
+   */
+  @Parameter(defaultValue = "/handlebars-v4.0.4.js")
+  private String handlebarsJsFile;
 
     /**
      * True, if the handlebars.runtime.js file need to be included in the output. Default is: false.
@@ -470,29 +470,29 @@ public class PrecompilePlugin extends HandlebarsPlugin {
         this.templates.add(template);
     }
 
-    /**
-     * Set the handlebars.js location used it to compile/precompile template to JavaScript.
-     * <p>
-     * Using handlebars.js 2.x:
-     * </p>
-     * <pre>
-     *   Handlebars handlebars = new Handlebars()
-     *      .withHandlberasJs("handlebars-v2.0.0.js");
-     * </pre>
-     * <p>
-     * Using handlebars.js 1.x:
-     * </p>
-     * <pre>
-     *   Handlebars handlebars = new Handlebars()
-     *      .withHandlberasJs("handlebars-v1.3.0.js");
-     * </pre>
-     * <p/>
-     * Default handlebars.js is <code>handlebars-v1.3.0.js</code>.
-     *
-     * @param handlebarsJsFile A classpath location of the handlebar.js file.
-     */
-    public void setHandlebarsJsFile(final String handlebarsJsFile) {
-        this.handlebarsJsFile = handlebarsJsFile;
-    }
+  /**
+   * Set the handlebars.js location used it to compile/precompile template to JavaScript.
+   * <p>
+   * Using handlebars.js 2.x:
+   * </p>
+   * <pre>
+   *   Handlebars handlebars = new Handlebars()
+   *      .handlebarsJsFile("handlebars-v2.0.0.js");
+   * </pre>
+   * <p>
+   * Using handlebars.js 1.x:
+   * </p>
+   * <pre>
+   *   Handlebars handlebars = new Handlebars()
+   *      .handlebarsJsFile("handlebars-v1.3.0.js");
+   * </pre>
+   *
+   * Default handlebars.js is <code>handlebars-v4.0.4.js</code>.
+   *
+   * @param handlebarsJsFile A classpath location of the handlebar.js file.
+   */
+  public void setHandlebarsJsFile(final String handlebarsJsFile) {
+    this.handlebarsJsFile = handlebarsJsFile;
+  }
 
 }

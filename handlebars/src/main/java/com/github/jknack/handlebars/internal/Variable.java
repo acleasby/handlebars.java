@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -24,12 +24,18 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.lang3.StringUtils;
+
 import com.github.jknack.handlebars.Context;
 import com.github.jknack.handlebars.EscapingStrategy;
+import com.github.jknack.handlebars.Formatter;
 import com.github.jknack.handlebars.Handlebars;
 import com.github.jknack.handlebars.Helper;
+import com.github.jknack.handlebars.HelperRegistry;
 import com.github.jknack.handlebars.Lambda;
 import com.github.jknack.handlebars.Options;
+import com.github.jknack.handlebars.PathCompiler;
+import com.github.jknack.handlebars.PathExpression;
 import com.github.jknack.handlebars.TagType;
 import com.github.jknack.handlebars.Template;
 
@@ -50,17 +56,12 @@ class Variable extends HelperResolver {
   /**
    * The variable's name. Required.
    */
-  private final String name;
+  protected final String name;
 
   /**
    * The variable type.
    */
-  private final TagType type;
-
-  /**
-   * Default value for a variable. If set, no lookup is executed. Optional.
-   */
-  private final Object constant;
+  protected final TagType type;
 
   /**
    * The start delimiter.
@@ -77,6 +78,21 @@ class Variable extends HelperResolver {
    */
   private EscapingStrategy escapingStrategy;
 
+  /** Helper. */
+  private Helper<Object> helper;
+
+  /** Formatter. */
+  private Formatter.Chain formatter;
+
+  /** Missing value resolver. */
+  private Helper<Object> missing;
+
+  /** A compiled version of {@link #name}. */
+  private List<PathExpression> path;
+
+  /** True, when no param/hash. */
+  private boolean noArg;
+
   /**
    * Creates a new {@link Variable}.
    *
@@ -89,29 +105,16 @@ class Variable extends HelperResolver {
   public Variable(final Handlebars handlebars, final String name,
       final TagType type, final List<Object> params,
       final Map<String, Object> hash) {
-    this(handlebars, name, null, type, params, hash);
-  }
-
-  /**
-   * Creates a new {@link Variable}.
-   *
-   * @param handlebars The handlebars instance.
-   * @param name The variable's name. Required.
-   * @param value The variable's value. Optional.
-   * @param type The variable's type. Required.
-   * @param params The variable's parameters. Required.
-   * @param hash The variable's hash. Required.
-   */
-  public Variable(final Handlebars handlebars, final String name,
-      final Object value, final TagType type, final List<Object> params,
-      final Map<String, Object> hash) {
     super(handlebars);
-    this.escapingStrategy = handlebars.getEscapingStrategy();
     this.name = name.trim();
-    this.constant = value;
+    this.path = PathCompiler.compile(name);
     this.type = type;
     params(params);
     hash(hash);
+    this.escapingStrategy = handlebars.getEscapingStrategy();
+    this.formatter = handlebars.getFormatter();
+    this.noArg = params.size() == 0 && hash.size() == 0;
+    postInit();
   }
 
   /**
@@ -119,14 +122,20 @@ class Variable extends HelperResolver {
    *
    * @param handlebars The handlebars instance.
    * @param name The variable's name. Required.
-   * @param value The variable's value. Optional.
    * @param type The variable's type. Required.
    */
   @SuppressWarnings("unchecked")
-  public Variable(final Handlebars handlebars, final String name,
-      final Object value, final TagType type) {
-    this(handlebars, name, value, type, Collections.EMPTY_LIST,
+  public Variable(final Handlebars handlebars, final String name, final TagType type) {
+    this(handlebars, name, type, Collections.EMPTY_LIST,
         Collections.EMPTY_MAP);
+  }
+
+  /**
+   * Apply any pending initialization.
+   */
+  protected void postInit() {
+    this.helper = helper(name);
+    this.missing = handlebars.helper(HelperRegistry.HELPER_MISSING);
   }
 
   /**
@@ -142,46 +151,33 @@ class Variable extends HelperResolver {
   @Override
   protected void merge(final Context scope, final Writer writer)
       throws IOException {
-    Helper<Object> helper = helper(name);
-    if (helper != null) {
+    Helper<Object> helper = this.helper;
+    boolean blockParam = scope.isBlockParams() && noArg;
+    if (helper != null && !blockParam) {
       Options options = new Options.Builder(handlebars, name, type, scope, empty(this))
           .setParams(params(scope))
           .setHash(hash(scope))
+          .setWriter(writer)
           .build();
       options.data(Context.PARAM_SIZE, this.params.size());
       CharSequence result = helper.apply(determineContext(scope), options);
-      if (escape(result)) {
-        writer.append(escapingStrategy.escape(result));
-      } else if (result != null) {
-        writer.append(result);
-      }
+      writer.append(formatAndEscape(result, Formatter.NOOP));
     } else {
-      Object value = constant == null ? scope.get(name) : constant;
+      Object value = scope.get(path);
       if (value == null) {
-        Helper<Object> missingValueResolver = helper(Handlebars.HELPER_MISSING);
-        if (missingValueResolver != null) {
+        if (missing != null) {
           Options options = new Options.Builder(handlebars, name, type, scope, empty(this))
               .setParams(params(scope))
               .setHash(hash(scope))
+              .setWriter(writer)
               .build();
-          value = missingValueResolver.apply(determineContext(scope), options);
+          value = missing.apply(determineContext(scope), options);
         }
       }
-      if (value != null) {
-        if (value instanceof Lambda) {
-          value =
-              Lambdas.merge(handlebars, (Lambda<Object, Object>) value, scope,
-                  this);
-        }
-        String stringValue = value.toString();
-        // TODO: Add formatter hook
-        if (escape(value)) {
-          writer.append(escapingStrategy.escape(stringValue));
-        } else {
-          // DON'T escape none String values.
-          writer.append(stringValue);
-        }
+      if (value instanceof Lambda) {
+        value = Lambdas.merge(handlebars, (Lambda<Object, Object>) value, scope, this);
       }
+      writer.append(formatAndEscape(value, formatter));
     }
   }
 
@@ -202,7 +198,7 @@ class Variable extends HelperResolver {
 
       @Override
       public String apply(final Object context) throws IOException {
-       return "";
+        return "";
       }
 
       @Override
@@ -238,20 +234,28 @@ class Variable extends HelperResolver {
    * True if the given value should be escaped.
    *
    * @param value The variable's value.
+   * @param formatter Formatter to use.
    * @return True if the given value should be escaped.
    */
-  private boolean escape(final Object value) {
-    if (value instanceof Handlebars.SafeString) {
-      return false;
+  private CharSequence formatAndEscape(final Object value, final Formatter.Chain formatter) {
+    if (value == null) {
+      return StringUtils.EMPTY;
     }
-    return type == TagType.VAR;
+    CharSequence formatted = formatter.format(value).toString();
+    if (value instanceof Handlebars.SafeString) {
+      return formatted;
+    }
+    if (type == TagType.VAR) {
+      return escapingStrategy.escape(formatted);
+    }
+    return formatted;
   }
 
   @Override
   public String text() {
     StringBuilder buffer = new StringBuilder();
-    buffer.append(startDelimiter).append(name);
-    String params = paramsToString();
+    buffer.append(startDelimiter).append(suffix()).append(name);
+    String params = paramsToString(this.params);
     if (params.length() > 0) {
       buffer.append(" ").append(params);
     }
@@ -260,6 +264,13 @@ class Variable extends HelperResolver {
       buffer.append(" ").append(hash);
     }
     return buffer.append(endDelimiter).toString();
+  }
+
+  /**
+   * @return Type suffix, default is empty.
+   */
+  protected String suffix() {
+    return "";
   }
 
   /**

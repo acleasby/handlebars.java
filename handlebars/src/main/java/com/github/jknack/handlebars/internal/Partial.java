@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -18,13 +18,16 @@
 package com.github.jknack.handlebars.internal;
 
 import static org.apache.commons.lang3.StringUtils.join;
-import static org.apache.commons.lang3.Validate.notEmpty;
+import static org.apache.commons.lang3.Validate.notNull;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import com.github.jknack.handlebars.Context;
 import com.github.jknack.handlebars.Handlebars;
@@ -43,17 +46,20 @@ import com.github.jknack.handlebars.io.TemplateSource;
  * @author edgar.espina
  * @since 0.1.0
  */
-class Partial extends BaseTemplate {
+class Partial extends HelperResolver {
 
   /**
    * The partial path.
    */
-  private String path;
+  private Template path;
 
   /**
    * A partial context. Optional.
    */
   private String context;
+
+  /** Null-Safe version of {@link #context}. */
+  private String scontext;
 
   /**
    * The start delimiter.
@@ -70,68 +76,110 @@ class Partial extends BaseTemplate {
    */
   private String indent;
 
+  /** Template loader. */
+  private TemplateLoader loader;
+
+  /** A partial block body. */
+  private Template partial;
+
   /**
    * Creates a new {@link Partial}.
    *
    * @param handlebars The Handlebars object. Required.
    * @param path The template path.
    * @param context The template context.
+   * @param hash Template params
    */
-  public Partial(final Handlebars handlebars, final String path, final String context) {
+  public Partial(final Handlebars handlebars, final Template path, final String context,
+      final Map<String, Object> hash) {
     super(handlebars);
-    this.path = notEmpty(path, "The path is required.");
+    this.path = notNull(path, "The path is required.");
     this.context = context;
+    this.scontext = context == null ? "this" : context;
+    this.hash(hash);
+    this.loader = handlebars.getLoader();
   }
 
   @Override
-  public void merge(final Context context, final Writer writer)
+  protected void merge(final Context context, final Writer writer)
       throws IOException {
-    TemplateLoader loader = handlebars.getLoader();
+    Map<String, Object> hash = Collections.emptyMap();
+    Context ctx = context;
     try {
-      LinkedList<TemplateSource> invocationStack = context.data(Context.INVOCATION_STACK);
+      String path = this.path.apply(context);
+      /** Inline partial? */
+      LinkedList<Map<String, Template>> partials = context.data(Context.INLINE_PARTIALS);
+      Map<String, Template> inlineTemplates = partials.getLast();
 
-      TemplateSource source = loader.sourceAt(path);
+      if (this.partial != null) {
+        this.partial.apply(context);
+        inlineTemplates.put("@partial-block", this.partial);
+      }
 
-      if (exists(invocationStack, source.filename())) {
-        TemplateSource caller = invocationStack.removeLast();
-        Collections.reverse(invocationStack);
+      Template template = inlineTemplates.get(path);
 
-        final String message;
-        final String reason;
-        if (invocationStack.isEmpty()) {
-          reason = String.format("infinite loop detected, partial '%s' is calling itself",
-              source.filename());
+      if (template == null) {
+        LinkedList<TemplateSource> invocationStack = context.data(Context.INVOCATION_STACK);
 
-          message = String.format("%s:%s:%s: %s", caller.filename(), line, column, reason);
-        } else {
-          reason = String.format(
-              "infinite loop detected, partial '%s' was previously loaded", source.filename());
+        try {
+          TemplateSource source = loader.sourceAt(path);
 
-          message = String.format("%s:%s:%s: %s\n%s", caller.filename(), line, column, reason,
-              "at " + join(invocationStack, "\nat "));
+          if (exists(invocationStack, source.filename())) {
+            TemplateSource caller = invocationStack.removeLast();
+            Collections.reverse(invocationStack);
+
+            final String message;
+            final String reason;
+            if (invocationStack.isEmpty()) {
+              reason = String.format("infinite loop detected, partial '%s' is calling itself",
+                  source.filename());
+
+              message = String.format("%s:%s:%s: %s", caller.filename(), line, column, reason);
+            } else {
+              reason = String.format(
+                  "infinite loop detected, partial '%s' was previously loaded", source.filename());
+
+              message = String.format("%s:%s:%s: %s\n%s", caller.filename(), line, column, reason,
+                  "at " + join(invocationStack, "\nat "));
+            }
+            HandlebarsError error = new HandlebarsError(caller.filename(), line,
+                column, reason, text(), message);
+            throw new HandlebarsException(error);
+          }
+
+          if (indent != null) {
+            source = partial(source, indent);
+          }
+
+          template = handlebars.compile(source);
+        } catch (FileNotFoundException fnf) {
+          if (this.partial != null) {
+            template = this.partial;
+          } else {
+            throw fnf;
+          }
         }
-        HandlebarsError error = new HandlebarsError(caller.filename(), line,
-            column, reason, text(), message);
-        throw new HandlebarsException(error);
-      }
 
-      if (indent != null) {
-        source = partial(source, indent);
       }
-
-      Template template = handlebars.compile(source);
-      if (this.context == null || this.context.equals("this")) {
-        template.apply(context, writer);
-      } else {
-        template.apply(Context.newContext(context, context.get(this.context)), writer);
+      if (!"this".equals(this.scontext)) {
+        ctx = Context.newContext(ctx, ctx.get(this.scontext));
       }
+      hash = hash(ctx);
+      ctx.data(hash);
+      template.apply(ctx, writer);
     } catch (IOException ex) {
       String reason = String.format("The partial '%s' could not be found",
-          loader.resolve(path));
+          loader.resolve(path.text()));
       String message = String.format("%s:%s:%s: %s", filename, line, column, reason);
       HandlebarsError error = new HandlebarsError(filename, line,
           column, reason, text(), message);
       throw new HandlebarsException(error);
+    } finally {
+      // clear partial params
+      Set<String> params = hash.keySet();
+      for (String param : params) {
+        ctx.data(param, null);
+      }
     }
   }
 
@@ -218,15 +266,21 @@ class Partial extends BaseTemplate {
 
   @Override
   public String text() {
+    String path = this.path.text();
     StringBuilder buffer = new StringBuilder(startDelimiter)
-      .append('>')
-      .append(path);
+        .append('>')
+        .append(path);
 
     if (context != null) {
       buffer.append(' ').append(context);
     }
 
     buffer.append(endDelimiter);
+
+    if (this.partial != null) {
+      buffer.append(this.partial.text()).append(startDelimiter, 0, startDelimiter.length() - 1)
+          .append("/").append(path).append(endDelimiter);
+    }
     return buffer.toString();
   }
 
@@ -278,6 +332,17 @@ class Partial extends BaseTemplate {
    */
   public Partial indent(final String indent) {
     this.indent = indent;
+    return this;
+  }
+
+  /**
+   * Set a partial block body.
+   *
+   * @param fn Partial block.
+   * @return This partial.
+   */
+  public Partial setPartial(final Template fn) {
+    this.partial = fn;
     return this;
   }
 

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -55,6 +55,9 @@ public class HighConcurrencyTemplateCache implements TemplateCache {
    */
   private final ConcurrentMap<TemplateSource, Future<Pair<TemplateSource, Template>>> cache;
 
+  /** Turn on/off auto reloading of templates. */
+  private boolean reload;
+
   /**
    * Creates a new HighConcurrencyTemplateCache.
    *
@@ -93,6 +96,12 @@ public class HighConcurrencyTemplateCache implements TemplateCache {
     return cacheGet(source, parser);
   }
 
+  @Override
+  public HighConcurrencyTemplateCache setReload(final boolean reload) {
+    this.reload = reload;
+    return this;
+  }
+
   /**
    * Get/Parse a template source.
    *
@@ -115,7 +124,7 @@ public class HighConcurrencyTemplateCache implements TemplateCache {
           if (future == null) {
             logger.debug("Loading: {}", source);
             future = putIfAbsent(source, futureTask);
-          } else if (source.lastModified() != future.get().getKey().lastModified()) {
+          } else if (reload && source.lastModified() != future.get().getKey().lastModified()) {
             evict(source);
             logger.debug("Reloading: {}", source);
             future = putIfAbsent(source, futureTask);

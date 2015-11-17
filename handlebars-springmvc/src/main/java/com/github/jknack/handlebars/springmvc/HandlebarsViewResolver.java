@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -41,10 +41,15 @@ import org.springframework.web.servlet.ViewResolver;
 import org.springframework.web.servlet.view.AbstractTemplateViewResolver;
 import org.springframework.web.servlet.view.AbstractUrlBasedView;
 
+import com.github.jknack.handlebars.Decorator;
+import com.github.jknack.handlebars.Formatter;
 import com.github.jknack.handlebars.Handlebars;
 import com.github.jknack.handlebars.Helper;
 import com.github.jknack.handlebars.HelperRegistry;
 import com.github.jknack.handlebars.ValueResolver;
+import com.github.jknack.handlebars.cache.HighConcurrencyTemplateCache;
+import com.github.jknack.handlebars.cache.NullTemplateCache;
+import com.github.jknack.handlebars.cache.TemplateCache;
 import com.github.jknack.handlebars.helper.DefaultHelperRegistry;
 import com.github.jknack.handlebars.helper.I18nHelper;
 import com.github.jknack.handlebars.helper.I18nSource;
@@ -105,6 +110,17 @@ public class HandlebarsViewResolver extends AbstractTemplateViewResolver
    *
    */
   private boolean deletePartialAfterMerge;
+
+  /**
+   * Set variable formatters.
+   */
+  private Formatter[] formatters;
+
+  /** Location of the handlebars.js file. */
+  private String handlebarsJsFile;
+
+  /** Template cache. */
+  private TemplateCache templateCache = new HighConcurrencyTemplateCache();
 
   /**
    * Creates a new {@link HandlebarsViewResolver}.
@@ -182,6 +198,16 @@ public class HandlebarsViewResolver extends AbstractTemplateViewResolver
 
     handlebars.with(registry);
 
+    if (handlebarsJsFile != null) {
+      handlebars.handlebarsJsFile(handlebarsJsFile);
+    }
+
+    if (formatters != null) {
+      for (Formatter formatter : formatters) {
+        handlebars.with(formatter);
+      }
+    }
+
     if (registerMessageHelper) {
       // Add a message source helper
       handlebars.registerHelper("message", new MessageSourceHelper(getApplicationContext()));
@@ -192,6 +218,11 @@ public class HandlebarsViewResolver extends AbstractTemplateViewResolver
 
       I18nHelper.i18n.setSource(i18nSource);
       I18nHelper.i18nJs.setSource(i18nSource);
+    }
+
+    TemplateCache cache = handlebars.getCache();
+    if (cache == NullTemplateCache.INSTANCE) {
+      handlebars.with(templateCache);
     }
 
     // set delete partial after merge
@@ -241,8 +272,7 @@ public class HandlebarsViewResolver extends AbstractTemplateViewResolver
    * @param context The application's context.
    * @return A new template loader.
    */
-  protected URLTemplateLoader createTemplateLoader(
-      final ApplicationContext context) {
+  protected URLTemplateLoader createTemplateLoader(final ApplicationContext context) {
     URLTemplateLoader templateLoader = new SpringTemplateLoader(context);
     // Override prefix and suffix.
     templateLoader.setPrefix(getPrefix());
@@ -271,6 +301,43 @@ public class HandlebarsViewResolver extends AbstractTemplateViewResolver
   public void setValueResolvers(final ValueResolver... valueResolvers) {
     this.valueResolvers = notEmpty(valueResolvers,
         "At least one value-resolver must be present.");
+  }
+
+  /**
+   * Set variable formatters.
+   *
+   * @param formatters Formatters to add.
+   */
+  public void setFormatters(final Formatter... formatters) {
+    this.formatters = notEmpty(formatters,
+        "At least one formatter must be present.");
+  }
+
+  /**
+   * Set the handlebars.js location used it to compile/precompile template to JavaScript.
+   * <p>
+   * Using handlebars.js 2.x:
+   * </p>
+   *
+   * <pre>
+   *   Handlebars handlebars = new Handlebars()
+   *      .handlebarsJsFile("handlebars-v2.0.0.js");
+   * </pre>
+   * <p>
+   * Using handlebars.js 1.x:
+   * </p>
+   *
+   * <pre>
+   *   Handlebars handlebars = new Handlebars()
+   *      .handlebarsJsFile("handlebars-v4.0.4.js");
+   * </pre>
+   *
+   * Default handlebars.js is <code>handlebars-v4.0.4.js</code>.
+   *
+   * @param location A classpath location of the handlebar.js file.
+   */
+  public void setHandlebarsJsFile(final String location) {
+    this.handlebarsJsFile = notEmpty(location, "Location is required");
   }
 
   /**
@@ -475,5 +542,31 @@ public class HandlebarsViewResolver extends AbstractTemplateViewResolver
    */
   public void setDeletePartialAfterMerge(final boolean deletePartialAfterMerge) {
     this.deletePartialAfterMerge = deletePartialAfterMerge;
+  }
+
+  @Override
+  public void setCache(final boolean cache) {
+    if (!cache) {
+      templateCache = NullTemplateCache.INSTANCE;
+    }
+    super.setCache(cache);
+  }
+
+  /**
+   * @param templateCache Set a template cache. Default is: {@link HighConcurrencyTemplateCache}.
+   */
+  public void setTemplateCache(final TemplateCache templateCache) {
+    this.templateCache = templateCache;
+  }
+
+  @Override
+  public Decorator decorator(final String name) {
+    return this.registry.decorator(name);
+  }
+
+  @Override
+  public HandlebarsViewResolver registerDecorator(final String name, final Decorator decorator) {
+    registry.registerDecorator(name, decorator);
+    return this;
   }
 }

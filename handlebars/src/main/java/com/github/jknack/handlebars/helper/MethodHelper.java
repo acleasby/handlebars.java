@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -36,6 +36,9 @@ import com.github.jknack.handlebars.Options;
  */
 public class MethodHelper implements Helper<Object> {
 
+  /** No args. */
+  private static final Object[] NO_ARGS = new Object[0];
+
   /**
    * The source or instance object. Might be null.
    */
@@ -59,28 +62,76 @@ public class MethodHelper implements Helper<Object> {
 
   @Override
   public CharSequence apply(final Object context, final Options options) throws IOException {
-    Class<?>[] paramTypes = method.getParameterTypes();
-    Object[] args = new Object[paramTypes.length];
-    // collect the parameters
-    int pidx = 0;
-    for (int i = 0; i < paramTypes.length; i++) {
-      Class<?> paramType = paramTypes[i];
-      Object ctx = i == 0 ? context : null;
-      Options opts = i == paramTypes.length - 1 ? options : null;
-      Object candidate = options.param(pidx, null);
-      Object arg = argument(paramType, candidate, ctx, opts);
-      args[i] = arg;
-      if (candidate == arg) {
-        pidx++;
-      }
-    }
     try {
+      Class<?>[] paramTypes = method.getParameterTypes();
+      Object[] args = NO_ARGS;
+      if (paramTypes.length > 0) {
+        args = new Object[paramTypes.length];
+        args[0] = paramTypes[0] == Options.class ? options : context;
+        for (int i = 1; i < args.length; i++) {
+          if (paramTypes[i] == Options.class) {
+            args[i] = options;
+          } else {
+            args[i] = options.param(i - 1);
+          }
+        }
+      }
       return (CharSequence) method.invoke(source, args);
+    } catch (ArrayIndexOutOfBoundsException ex) {
+      throw new IllegalArgumentException(
+          "could not execute helper: " + toString(method) + ", with the given arguments: "
+              + toString(options.params),
+          ex);
     } catch (InvocationTargetException ex) {
       throw launderThrowable(ex.getCause());
     } catch (IllegalAccessException ex) {
-      throw new IllegalStateException("could not execute helper: " + method.getName(), ex);
+      throw new IllegalStateException("could not execute helper: " + toString(method), ex);
     }
+  }
+
+  /**
+   * Describe params.
+   *
+   * @param params Params to describe.
+   * @return ToString of params
+   */
+  private String toString(final Object[] params) {
+    StringBuilder buff = new StringBuilder();
+    buff.append("[");
+    for (Object param : params) {
+      buff.append(param == null ? "null" : param.getClass().getSimpleName()).append(", ");
+    }
+    if (buff.length() > 1) {
+      buff.setLength(buff.length() - 2);
+    }
+    return buff.append("]").toString();
+  }
+
+  /**
+   * Describes method.
+   *
+   * @param method Method to describe.
+   * @return ToString of method.
+   */
+  private String toString(final Method method) {
+    return method.getName() + "(" + toString(method.getParameterTypes()) + ")";
+  }
+
+  /**
+   * Describe types.
+   *
+   * @param types Types to describe.
+   * @return ToString of types.
+   */
+  private String toString(final Class<?>[] types) {
+    StringBuilder buff = new StringBuilder();
+    for (Class<?> type : types) {
+      buff.append(type.getSimpleName()).append(", ");
+    }
+    if (buff.length() > 0) {
+      buff.setLength(buff.length() - 2);
+    }
+    return buff.toString();
   }
 
   /**
@@ -100,55 +151,4 @@ public class MethodHelper implements Helper<Object> {
     return new IllegalStateException("could not execute helper: " + method.getName(), cause);
   }
 
-  /**
-   * Choose between context, options or a possible argument that matches the parameter type.
-   *
-   * @param paramType The expected parameter type.
-   * @param argument The possible argument.
-   * @param context The context object.
-   * @param options The options object.
-   * @return An object argument.
-   */
-  private Object argument(final Class<?> paramType, final Object argument, final Object context,
-      final Options options) {
-    // priority order is as follows:
-    // 1. context
-    // 2. argument
-    // 3. options
-    for (Object candidate : new Object[]{context, argument, options }) {
-      if (paramType.isInstance(candidate) || wrap(paramType).isInstance(candidate)) {
-        return candidate;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Wrap (if possible) a primitive type to their wrapper.
-   *
-   * @param type The candidate type.
-   * @return A wrapper for the primitive type or the original type.
-   */
-  private static Class<?> wrap(final Class<?> type) {
-    if (type.isPrimitive()) {
-      if (type == Integer.TYPE) {
-        return Integer.class;
-      } else if (type == Boolean.TYPE) {
-        return Boolean.class;
-      } else if (type == Character.TYPE) {
-        return Character.class;
-      } else if (type == Double.TYPE) {
-        return Double.class;
-      } else if (type == Long.TYPE) {
-        return Long.class;
-      } else if (type == Float.TYPE) {
-        return Float.class;
-      } else if (type == Short.TYPE) {
-        return Short.class;
-      } else if (type == Byte.TYPE) {
-        return Byte.class;
-      }
-    }
-    return type;
-  }
 }

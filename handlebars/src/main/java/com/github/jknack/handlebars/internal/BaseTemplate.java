@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -113,41 +113,32 @@ abstract class BaseTemplate implements Template {
   @Override
   public String apply(final Context context) throws IOException {
     FastStringWriter writer = new FastStringWriter();
-    try {
-      apply(context, writer);
-      return writer.toString();
-    } finally {
-      writer.close();
-    }
+    apply(context, writer);
+    return writer.toString();
   }
 
   @Override
   public void apply(final Context context, final Writer writer)
       throws IOException {
-    notNull(writer, "A writer is required.");
-    Context wrapped = wrap(context);
     try {
-      merge(wrapped, writer);
+      before(context, writer);
+      merge(context, writer);
     } catch (HandlebarsException ex) {
       throw ex;
     } catch (Exception ex) {
       String evidence = toString();
       String reason = ex.toString();
-      String message =
-          filename + ":" + line + ":" + column + ": "
-              + reason + "\n";
+      String message = filename + ":" + line + ":" + column + ": "
+          + reason + "\n";
       message += "    " + join(split(evidence, "\n"), "\n    ");
-      HandlebarsError error =
-          new HandlebarsError(filename, line, column, reason, evidence,
-              message);
+      HandlebarsError error = new HandlebarsError(filename, line, column, reason, evidence,
+          message);
       HandlebarsException hex = new HandlebarsException(error, ex);
       // Override the stack-trace
       hex.setStackTrace(ex.getStackTrace());
       throw hex;
     } finally {
-      if (wrapped != context) {
-        wrapped.destroy();
-      }
+      after(context, writer);
     }
   }
 
@@ -164,6 +155,14 @@ abstract class BaseTemplate implements Template {
     return Context.newContext(candidate);
   }
 
+  @Override
+  public void before(final Context context, final Writer writer) throws IOException {
+  }
+
+  @Override
+  public void after(final Context context, final Writer writer) throws IOException {
+  }
+
   /**
    * Merge a child template into the writer.
    *
@@ -171,11 +170,10 @@ abstract class BaseTemplate implements Template {
    * @param writer The writer.
    * @throws IOException If a resource cannot be loaded.
    */
-  protected abstract void merge(final Context context, Writer writer)
-      throws IOException;
+  protected abstract void merge(final Context context, Writer writer) throws IOException;
 
   @Override
-  public final String toString() {
+  public String toString() {
     return filename + ":" + line + ":" + column;
   }
 
@@ -238,7 +236,7 @@ abstract class BaseTemplate implements Template {
    * @return A new {@link TypeSafeTemplate}.
    */
   private static Object newTypeSafeTemplate(final Class<?> rootType, final Template template) {
-    return Proxy.newProxyInstance(template.getClass().getClassLoader(), new Class[]{rootType },
+    return Proxy.newProxyInstance(rootType.getClassLoader(), new Class[]{rootType },
         new InvocationHandler() {
           private Map<String, Object> attributes = new HashMap<String, Object>();
 

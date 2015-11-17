@@ -1,53 +1,59 @@
 package com.github.jknack.handlebars;
 
-import static org.junit.Assert.*;
+import static org.apache.commons.lang3.StringUtils.join;
+import static org.junit.Assert.assertEquals;
+
+import java.util.Arrays;
+import java.util.List;
 
 import org.junit.Test;
 
 public class PropertyPathParserTest {
 
-  private PropertyPathParser parser = new PropertyPathParser("./");
-
   @Test
   public void testSinglePath() {
-    assertArrayEquals(new String[]{"this"}, parser.parsePath("this"));
+    eq(Arrays.asList("this"), PathCompiler.compile("this"));
   }
 
   @Test
   public void testDotPath() {
-    assertArrayEquals(array("this", "foo"), parser.parsePath("this.foo"));
-    assertArrayEquals(array("this", "foo", "bar"), parser.parsePath("this.foo.bar"));
+    eq(array("this", "foo"), PathCompiler.compile("this.foo"));
+    eq(array("this", "foo", "bar"), PathCompiler.compile("this.foo.bar"));
   }
 
   @Test
   public void testSlashPath() {
-    assertArrayEquals(array("this", "foo"), parser.parsePath("this/foo"));
-    assertArrayEquals(array("this", "foo", "bar", "baz"), parser.parsePath("this/foo/bar/baz"));
+    eq(array("this", "foo"), PathCompiler.compile("this/foo"));
+    eq(array("this", "foo", "bar", "baz"), PathCompiler.compile("this/foo/bar/baz"));
   }
 
   @Test
   public void testDotAndSlashPath() {
-    assertArrayEquals(array("this", "foo"), parser.parsePath("this.foo"));
-    assertArrayEquals(array("this", "foo", "bar", "baz"), parser.parsePath("this.foo/bar.baz"));
+    eq(array("this", "foo"), PathCompiler.compile("this.foo"));
+    eq(array("this", "foo", "bar", "baz"), PathCompiler.compile("this.foo/bar.baz"));
   }
 
   @Test
   public void testSingleLiteral() {
-    assertArrayEquals(array("[foo]"), parser.parsePath("[foo]"));
-    assertArrayEquals(array("[foo.bar.baz]"), parser.parsePath("[foo.bar.baz]"));
-    assertArrayEquals(array("[foo/bar/baz]"), parser.parsePath("[foo/bar/baz]"));
-    assertArrayEquals(array("[foo/bar.baz]"), parser.parsePath("[foo/bar.baz]"));
+    eq(array("foo"), PathCompiler.compile("[foo]"));
+    eq(array("foo.bar.baz"), PathCompiler.compile("[foo.bar.baz]"));
+    eq(array("foo/bar/baz"), PathCompiler.compile("[foo/bar/baz]"));
+    eq(array("foo/bar.baz"), PathCompiler.compile("[foo/bar.baz]"));
   }
 
   @Test
   public void testMultipleLiteralsAndJavaNames() {
-    assertArrayEquals(array("this", "foo", "[bar.1]"), parser.parsePath("this.foo.[bar.1]"));
-    assertArrayEquals(array("this", "_foo1", "[bar.1]", "_foo2", "[bar.2]"),
-      parser.parsePath("this._foo1.[bar.1]._foo2.[bar.2]"));
+    eq(array("this", "foo", "bar.1"), PathCompiler.compile("this.foo.[bar.1]"));
+    eq(array("this", "_foo1", "bar.1", "_foo2", "bar.2"),
+      PathCompiler.compile("this._foo1.[bar.1]._foo2.[bar.2]"));
   }
 
-  private String[] array(String... vals) {
-    return vals;
+  private List<String> array(final String... vals) {
+    return Arrays.asList(vals);
+  }
+
+  private void eq(final List<String> expected, final List<PathExpression> path) {
+    assertEquals(join(expected, ", "), join(path, ", "));
   }
 
 }

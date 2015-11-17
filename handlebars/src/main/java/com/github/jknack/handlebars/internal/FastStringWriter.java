@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -20,6 +20,8 @@ package com.github.jknack.handlebars.internal;
 import java.io.IOException;
 import java.io.Writer;
 
+import org.apache.commons.lang3.text.StrBuilder;
+
 /**
  * A string writer without locking.
  *
@@ -30,7 +32,25 @@ class FastStringWriter extends Writer {
   /**
    * The internal buffer.
    */
-  private final StringBuilder buffer = new StringBuilder();
+  private StrBuilder buffer = new StrBuilder();
+
+  @Override
+  public Writer append(final char c) throws IOException {
+    buffer.append(c);
+    return this;
+  }
+
+  @Override
+  public Writer append(final CharSequence csq) throws IOException {
+    buffer.append(csq);
+    return this;
+  }
+
+  @Override
+  public Writer append(final CharSequence csq, final int start, final int end) throws IOException {
+    buffer.append(csq, start, end);
+    return this;
+  }
 
   @Override
   public void write(final char[] buffer) throws IOException {
@@ -50,7 +70,7 @@ class FastStringWriter extends Writer {
   @Override
   public void write(final String str, final int off, final int len)
       throws IOException {
-    buffer.append(str, off, off + len);
+    buffer.append(str, off, len);
   }
 
   @Override
@@ -71,7 +91,7 @@ class FastStringWriter extends Writer {
 
   @Override
   public void close() throws IOException {
-    buffer.delete(0, buffer.length());
+    buffer = null;
   }
 
   @Override

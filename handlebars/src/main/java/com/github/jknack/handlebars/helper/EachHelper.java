@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -18,15 +18,14 @@
 package com.github.jknack.handlebars.helper;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map.Entry;
-import java.util.Set;
-
-import org.apache.commons.lang3.StringUtils;
 
 import com.github.jknack.handlebars.Context;
 import com.github.jknack.handlebars.Helper;
 import com.github.jknack.handlebars.Options;
+import com.github.jknack.handlebars.Template;
 
 /**
  * You can iterate over a list using the built-in each helper. Inside the
@@ -52,34 +51,41 @@ public class EachHelper implements Helper<Object> {
   @Override
   public CharSequence apply(final Object context, final Options options)
       throws IOException {
-    if (context == null) {
-      return StringUtils.EMPTY;
-    }
     if (context instanceof Iterable) {
       return iterableContext((Iterable) context, options);
+    } else if (context != null) {
+      return hashContext(context, options);
     }
-    return hashContext(context, options);
+    return options.buffer();
   }
 
   /**
    * Iterate over a hash like object.
    *
-   * @param context The context object.
+   * @param it The context object.
    * @param options The helper options.
    * @return The string output.
    * @throws IOException If something goes wrong.
    */
-  private CharSequence hashContext(final Object context, final Options options)
+  private CharSequence hashContext(final Object it, final Options options)
       throws IOException {
-    Set<Entry<String, Object>> propertySet = options.propertySet(context);
-    StringBuilder buffer = new StringBuilder();
+    Iterator<Entry<String, Object>> loop = options.propertySet(it).iterator();
     Context parent = options.context;
-    for (Entry<String, Object> entry : propertySet) {
-      Context current = Context.newContext(parent, entry.getValue())
-          .data("key", entry.getKey());
-      buffer.append(options.fn(current));
+    boolean first = true;
+    Options.Buffer buffer = options.buffer();
+    Template fn = options.fn;
+    while (loop.hasNext()) {
+      Entry<String, Object> entry = loop.next();
+      String key = entry.getKey();
+      Context itCtx = Context.newBuilder(parent, entry.getValue())
+          .combine("@key", key)
+          .combine("@first", first ? "first" : "")
+          .combine("@last", !loop.hasNext() ? "last" : "")
+          .build();
+      buffer.append(options.apply(fn, itCtx, Arrays.asList(it, key)));
+      first = false;
     }
-    return buffer.toString();
+    return buffer;
   }
 
   /**
@@ -92,33 +98,33 @@ public class EachHelper implements Helper<Object> {
    */
   private CharSequence iterableContext(final Iterable<Object> context, final Options options)
       throws IOException {
-    StringBuilder buffer = new StringBuilder();
+    Options.Buffer buffer = options.buffer();
     if (options.isFalsy(context)) {
       buffer.append(options.inverse());
     } else {
-      Iterator<Object> iterator = context.iterator();
-      int index = -1;
+      Iterator<Object> loop = context.iterator();
+      int base = options.hash("base", 0);
+      int index = base;
       Context parent = options.context;
-      while (iterator.hasNext()) {
-        index += 1;
-        Object element = iterator.next();
-        boolean first = index == 0;
+      Template fn = options.fn;
+      while (loop.hasNext()) {
+        Object it = loop.next();
         boolean even = index % 2 == 0;
-        boolean last = !iterator.hasNext();
-        Context current = Context.newBuilder(parent, element)
+        Context itCtx = Context.newBuilder(parent, it)
             .combine("@index", index)
-            .combine("@first", first ? "first" : "")
-            .combine("@last", last ? "last" : "")
+            .combine("@first", index == base ? "first" : "")
+            .combine("@last", !loop.hasNext() ? "last" : "")
             .combine("@odd", even ? "" : "odd")
             .combine("@even", even ? "even" : "")
             // 1-based index
             .combine("@index_1", index + 1)
             .build();
-        buffer.append(options.fn(current));
-        current.destroy();
+        buffer.append(options.apply(fn, itCtx, Arrays.asList(it, index)));
+        itCtx.destroy();
+        index += 1;
       }
     }
-    return buffer.toString();
+    return buffer;
   }
 
 }

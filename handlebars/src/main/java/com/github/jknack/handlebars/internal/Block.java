@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -17,7 +17,6 @@
  */
 package com.github.jknack.handlebars.internal;
 
-import static org.apache.commons.lang3.StringUtils.isEmpty;
 import static org.apache.commons.lang3.Validate.isTrue;
 import static org.apache.commons.lang3.Validate.notNull;
 
@@ -25,7 +24,9 @@ import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,6 +36,8 @@ import com.github.jknack.handlebars.Handlebars;
 import com.github.jknack.handlebars.Helper;
 import com.github.jknack.handlebars.Lambda;
 import com.github.jknack.handlebars.Options;
+import com.github.jknack.handlebars.PathCompiler;
+import com.github.jknack.handlebars.PathExpression;
 import com.github.jknack.handlebars.TagType;
 import com.github.jknack.handlebars.Template;
 import com.github.jknack.handlebars.helper.EachHelper;
@@ -58,12 +61,12 @@ class Block extends HelperResolver {
   /**
    * The body template.
    */
-  private Template body;
+  protected Template body;
 
   /**
    * The section's name.
    */
-  private final String name;
+  protected final String name;
 
   /**
    * True if it's inverted.
@@ -88,12 +91,24 @@ class Block extends HelperResolver {
   /**
    * Inverse section for if/else clauses.
    */
-  private Template inverse;
+  private Template inverse = Template.EMPTY;
 
   /**
    * The inverse label: 'else' or '^'.
    */
   private String inverseLabel;
+
+  /** Helper. */
+  private Helper<Object> helper;
+
+  /** Block param names. */
+  protected final List<String> blockParams;
+
+  /** Tag type, default: is {@link TagType#SECTION}. */
+  protected TagType tagType;
+
+  /** Compiled path for {@link #name()}. */
+  private List<PathExpression> path;
 
   /**
    * Creates a new {@link Block}.
@@ -101,18 +116,48 @@ class Block extends HelperResolver {
    * @param handlebars The handlebars object.
    * @param name The section's name.
    * @param inverted True if it's inverted.
+   * @param type Block type: <code>#</code>, <code>^</code>, <code>#*</code>, <code>{{</code>.
    * @param params The parameter list.
    * @param hash The hash.
+   * @param blockParams The block param names.
    */
   public Block(final Handlebars handlebars, final String name,
-      final boolean inverted, final List<Object> params,
-      final Map<String, Object> hash) {
+      final boolean inverted, final String type, final List<Object> params,
+      final Map<String, Object> hash, final List<String> blockParams) {
     super(handlebars);
     this.name = notNull(name, "The name is required.");
+    this.path = PathCompiler.compile(name);
     this.inverted = inverted;
-    type = inverted ? "^" : "#";
+    this.type = type;
     params(params);
     hash(hash);
+    this.blockParams = blockParams;
+    this.tagType = TagType.SECTION;
+    postInit();
+  }
+
+  /**
+   * Make/run any pending or required initialization.
+   */
+  protected void postInit() {
+    this.helper = helper(name);
+  }
+
+  @Override
+  public void before(final Context context, final Writer writer) throws IOException {
+    if (body != null) {
+      LinkedList<Map<String, Template>> partials = context.data(Context.INLINE_PARTIALS);
+      partials.addLast(new HashMap<>(partials.getLast()));
+      body.before(context, writer);
+    }
+  }
+
+  @Override
+  public void after(final Context context, final Writer writer) throws IOException {
+    if (body != null) {
+      LinkedList<Map<String, Template>> partials = context.data(Context.INLINE_PARTIALS);
+      partials.removeLast();
+    }
   }
 
   @SuppressWarnings("unchecked")
@@ -121,46 +166,55 @@ class Block extends HelperResolver {
     if (body == null) {
       return;
     }
+
     final String helperName;
-    Helper<Object> helper = helper(name);
+    Helper<Object> helper = this.helper;
     Template template = body;
-    final Object childContext;
-    Context currentScope = context;
+    final Object it;
+    Context itCtx = context;
     if (helper == null) {
-      childContext = transform(context.get(name));
+      it = Transformer.transform(itCtx.get(this.path));
       if (inverted) {
         helperName = UnlessHelper.NAME;
-      } else if (childContext instanceof Iterable) {
+      } else if (it instanceof Iterable) {
         helperName = EachHelper.NAME;
-      } else if (childContext instanceof Boolean) {
+      } else if (it instanceof Boolean) {
         helperName = IfHelper.NAME;
-      } else if (childContext instanceof Lambda) {
+      } else if (it instanceof Lambda) {
         helperName = WithHelper.NAME;
         template = Lambdas
-            .compile(handlebars,
-                (Lambda<Object, Object>) childContext,
-                context, template,
+            .compile(handlebars, (Lambda<Object, Object>) it, context, template,
                 startDelimiter, endDelimiter);
       } else {
         helperName = WithHelper.NAME;
-        currentScope = Context.newContext(context, childContext);
+        itCtx = Context.newContext(context, it);
       }
       // A built-in helper might be override it.
       helper = handlebars.helper(helperName);
+
+      if (it == null) {
+        Helper<Object> missing = helper(Handlebars.HELPER_MISSING);
+        if (missing != null) {
+          // use missing here
+          helper = missing;
+        }
+      }
     } else {
       helperName = name;
-      childContext = transform(determineContext(context));
+      it = Transformer.transform(determineContext(context));
     }
-    Options options = new Options.Builder(handlebars, helperName, TagType.SECTION, currentScope,
-        template)
-        .setInverse(inverse == null ? Template.EMPTY : inverse)
-        .setParams(params(currentScope))
-        .setHash(hash(context))
+
+    Options options = new Options.Builder(handlebars, helperName, tagType, itCtx, template)
+        .setInverse(inverse)
+        .setParams(params(itCtx))
+        .setHash(hash(itCtx))
+        .setBlockParams(blockParams)
+        .setWriter(writer)
         .build();
     options.data(Context.PARAM_SIZE, this.params.size());
 
-    CharSequence result = helper.apply(childContext, options);
-    if (!isEmpty(result)) {
+    CharSequence result = helper.apply(it, options);
+    if (result != null) {
       writer.append(result);
     }
   }
@@ -264,7 +318,7 @@ class Block extends HelperResolver {
   private String text(final boolean complete) {
     StringBuilder buffer = new StringBuilder();
     buffer.append(startDelimiter).append(type).append(name);
-    String params = paramsToString();
+    String params = paramsToString(this.params);
     if (params.length() > 0) {
       buffer.append(" ").append(params);
     }
@@ -272,14 +326,21 @@ class Block extends HelperResolver {
     if (hash.length() > 0) {
       buffer.append(" ").append(hash);
     }
+    if (blockParams.size() > 0) {
+      buffer.append(" as |").append(paramsToString(this.blockParams)).append("|");
+    }
     buffer.append(endDelimiter);
     if (complete) {
       buffer.append(body == null ? "" : body.text());
-      buffer.append(inverse == null ? "" : "{{" + inverseLabel + "}}" + inverse.text());
+      buffer.append(inverse == Template.EMPTY ? "" : "{{" + inverseLabel + "}}" + inverse.text());
     } else {
       buffer.append("\n...\n");
     }
-    buffer.append(startDelimiter).append('/').append(name).append(endDelimiter);
+    buffer.append(startDelimiter);
+    if (type.equals("{{")) {
+      buffer.append("{{");
+    }
+    buffer.append('/').append(name).append(endDelimiter);
     return buffer.toString();
   }
 
@@ -307,16 +368,14 @@ class Block extends HelperResolver {
     if (body != null) {
       tagNames.addAll(body.collect(tagType));
     }
-    if (inverse != null) {
-      tagNames.addAll(inverse.collect(tagType));
-    }
+    tagNames.addAll(inverse.collect(tagType));
     tagNames.addAll(super.collect(tagType));
     return new ArrayList<String>(tagNames);
   }
 
   @Override
   protected void collect(final Collection<String> result, final TagType tagType) {
-    if (tagType == TagType.SECTION) {
+    if (tagType == this.tagType) {
       result.add(name);
     }
     super.collect(result, tagType);
@@ -328,9 +387,7 @@ class Block extends HelperResolver {
     if (body != null) {
       paramNames.addAll(body.collectReferenceParameters());
     }
-    if (inverse != null) {
-      paramNames.addAll(inverse.collectReferenceParameters());
-    }
+    paramNames.addAll(inverse.collectReferenceParameters());
     paramNames.addAll(super.collectReferenceParameters());
     return new ArrayList<String>(paramNames);
   }

@@ -5,6 +5,22 @@ options {
 }
 
 @members {
+
+  public String[] tokenNames() {
+    String[] tokenNames = new String[_SYMBOLIC_NAMES.length];
+    for (int i = 0; i < tokenNames.length; i++) {
+      tokenNames[i] = VOCABULARY.getLiteralName(i);
+      if (tokenNames[i] == null) {
+        tokenNames[i] = VOCABULARY.getSymbolicName(i);
+      }
+
+      if (tokenNames[i] == null) {
+        tokenNames[i] = "<INVALID>";
+      }
+    }
+    return tokenNames;
+  }
+
   void setStart(String start) {
   }
 
@@ -39,6 +55,8 @@ statement
   | ampvar
   | unless
   | partial
+  | partialBlock
+  | rawBlock
   | escape
   | comment
   | delimiters
@@ -50,7 +68,10 @@ escape
   ;
 
 text
-  : TEXT
+  :
+    TEXT
+  | RAW_CONTENT
+  | RAW_SPACE
   ;
 
 spaces
@@ -63,10 +84,22 @@ newline
 
 block
   :
-    START_BLOCK sexpr END
+    startToken = START_BLOCK DECORATOR? sexpr blockParams? END
     thenBody=body
-    elseBlock?
+    elseBlock*
     END_BLOCK nameEnd=QID END
+  ;
+
+rawBlock
+  :
+    startToken = START_RAW sexpr END_RAW
+    thenBody=body
+    END_RAW_BLOCK nameEnd=QID END_RAW
+  ;
+
+blockParams
+  :
+    AS PIPE QID+ PIPE
   ;
 
 sexpr
@@ -76,12 +109,23 @@ sexpr
 
 elseBlock
   :
+    elseStmt
+  | elseStmtChain
+  ;
+
+elseStmt
+  :
     (inverseToken=UNLESS | START inverseToken=ELSE) END unlessBody=body
+  ;
+
+elseStmtChain
+  :
+    (inverseToken=UNLESS | START inverseToken=ELSE) sexpr blockParams? END unlessBody=body
   ;
 
 unless
   :
-    UNLESS nameStart=QID END
+    UNLESS sexpr blockParams? END
     body
     END_BLOCK nameEnd=QID END
   ;
@@ -98,7 +142,7 @@ ampvar
 
 var
   :
-   START sexpr END
+   START DECORATOR? sexpr END
   ;
 
 delimiters
@@ -116,7 +160,20 @@ delimiters
 
 partial
   :
-    START_PARTIAL PATH QID? END
+    START_PARTIAL pexpr END
+  ;
+
+partialBlock
+  :
+    START_PARTIAL_BLOCK pexpr END
+    thenBody=body
+    END_BLOCK nameEnd=QID END
+  ;
+
+pexpr
+  :
+    LP sexpr RP hash*             #dynamicPath
+  | path = (QID|PATH) QID? hash*  #staticPath
   ;
 
 param

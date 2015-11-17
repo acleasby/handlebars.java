@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -155,6 +155,14 @@ public enum StringHelpers implements Helper<Object> {
    * </pre>
    */
   join {
+    @Override
+    public CharSequence apply(final Object context, final Options options) {
+      if (options.isFalsy(context)) {
+        return "";
+      }
+      return safeApply(context, options);
+    }
+
     @SuppressWarnings("rawtypes")
     @Override
     protected CharSequence safeApply(final Object context, final Options options) {
@@ -587,6 +595,15 @@ public enum StringHelpers implements Helper<Object> {
    * @see DecimalFormat
    */
   numberFormat {
+    @Override
+    public CharSequence apply(final Object context, final Options options) throws IOException {
+      if (context instanceof Number) {
+        return safeApply(context, options);
+      }
+      Object param = options.param(0, null);
+      return param == null ? null : param.toString();
+    }
+
     @Override
     protected CharSequence safeApply(final Object value, final Options options) {
       isTrue(value instanceof Number, "found '%s', expected 'number'", value);

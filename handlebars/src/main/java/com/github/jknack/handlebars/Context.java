@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -18,9 +18,7 @@
 package com.github.jknack.handlebars;
 
 import static org.apache.commons.lang3.Validate.notEmpty;
-import static org.apache.commons.lang3.Validate.notNull;
 
-import java.lang.reflect.Array;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -29,8 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import com.github.jknack.handlebars.io.TemplateSource;
 
@@ -54,29 +50,76 @@ import com.github.jknack.handlebars.io.TemplateSource;
 public class Context {
 
   /**
-   * Handlebars and Mustache path separator.
+   * Special scope for silly block param rules, implemented by handlebars.js. This context will
+   * check for pathed variable and resolve them against parent context.
+   *
+   * @author edgar
+   * @since 3.0.0
    */
-  private static final String PATH_SEPARATOR = "./";
+  private static class BlockParam extends Context {
+
+    /**
+     * A new {@link BlockParam}.
+     *
+     * @param parent Parent context.
+     * @param hash A hash model.
+     */
+    protected BlockParam(final Context parent, final Map<String, Object> hash) {
+      super(hash);
+      this.extendedContext = new Context(new HashMap<String, Object>());
+      this.extendedContext.resolver = parent.resolver;
+      this.parent = parent;
+      this.data = parent.data;
+      this.resolver = parent.resolver;
+    }
+
+    @Override
+    public Object get(final List<PathExpression> path) {
+      String key = path.get(0).toString();
+      // path variable should resolve from parent :S
+      if (key.startsWith(".")) {
+        return parent.get(path.subList(1, path.size()));
+      }
+      return super.get(path);
+    }
+
+    @Override
+    protected Context newChildContext(final Object model) {
+      return new ParentFirst(model);
+    }
+  }
 
   /**
-   * Handlebars 'parent' attribute reference.
+   * Context that resolve variables against parent, or fallback to default/normal lookup.
+   *
+   * @author edgar
+   * @since 3.0.0
    */
-  private static final String PARENT_ATTR = "../";
+  private static class ParentFirst extends Context {
 
-  /**
-   * Handlebars 'parent' attribute reference.
-   */
-  private static final String PARENT = "..";
+    /**
+     * Parent first lookup.
+     *
+     * @param model A model.
+     */
+    protected ParentFirst(final Object model) {
+      super(model);
+    }
 
-  /**
-   * Handlebars 'this' reference.
-   */
-  private static final String THIS = "this";
+    @Override
+    public Object get(final List<PathExpression> path) {
+      Object value = parent.get(path);
+      if (value == null) {
+        return super.get(path);
+      }
+      return value;
+    }
 
-  /**
-   * The mustache 'this' reference.
-   */
-  private static final String MUSTACHE_THIS = ".";
+    @Override
+    protected Context newChildContext(final Object model) {
+      return new ParentFirst(model);
+    }
+  }
 
   /**
    * A composite value resolver. It delegate the value resolution.
@@ -102,22 +145,26 @@ public class Context {
 
     @Override
     public Object resolve(final Object context, final String name) {
-      for (ValueResolver resolver : resolvers) {
-        Object value = resolver.resolve(context, name);
+      int i = 0;
+      while (i < resolvers.length) {
+        Object value = resolvers[i].resolve(context, name);
         if (value != UNRESOLVED) {
           return value == null ? NULL : value;
         }
+        i += 1;
       }
       return null;
     }
 
     @Override
     public Object resolve(final Object context) {
-      for (ValueResolver resolver : resolvers) {
-        Object value = resolver.resolve(context);
+      int i = 0;
+      while (i < resolvers.length) {
+        Object value = resolvers[i].resolve(context);
         if (value != UNRESOLVED) {
           return value == null ? NULL : value;
         }
+        i += 1;
       }
       return null;
     }
@@ -152,7 +199,7 @@ public class Context {
      * @param model The model data.
      */
     private Builder(final Context parent, final Object model) {
-      context = Context.child(parent, model);
+      context = parent.newChild(model);
     }
 
     /**
@@ -224,29 +271,70 @@ public class Context {
   }
 
   /**
+   * Path expression chain.
+   *
+   * @author edgar
+   * @since 4.0.1
+   */
+  private static class PathExpressionChain implements PathExpression.Chain {
+
+    /** Expression path. */
+    private List<PathExpression> path;
+
+    /** Cursor to move/execute the next expression. */
+    private int i = 0;
+
+    /**
+     * Creates a new {@link PathExpressionChain}.
+     *
+     * @param path Expression path.
+     */
+    public PathExpressionChain(final List<PathExpression> path) {
+      this.path = path;
+    }
+
+    @Override
+    public Object next(final ValueResolver resolver, final Context context, final Object data) {
+      if (data != null && i < path.size()) {
+        PathExpression next = path.get(i++);
+        return next.eval(resolver, context, data, this);
+      }
+      return data;
+    }
+
+    /**
+     * Reset any previous state and restart the evaluation.
+     *
+     * @param resolver Value resolver.
+     * @param context Context object.
+     * @param data Data object.
+     * @return A resolved value or <code>null</code>.
+     */
+    public Object eval(final ValueResolver resolver, final Context context, final Object data) {
+      i = 0;
+      Object value = next(resolver, context, data);
+      if (value == null) {
+        return i > 1 ? NULL : null;
+      }
+      return value;
+    }
+
+  }
+
+  /**
    * Mark for fail context lookup.
    */
   private static final Object NULL = new Object();
 
   /**
-   * Property access expression.
-   */
-  private static final Pattern IDX = Pattern.compile("\\[((.)+)\\]");
-
-  /**
-   * Index access expression.
-   */
-  private static final Pattern INT = Pattern.compile("\\d+");
-
-  /**
-   * Parser for path expressions.
-   */
-  private static final PropertyPathParser PATH_PARSER = new PropertyPathParser(PATH_SEPARATOR);
-
-  /**
    * The qualified name for partials. Internal use.
    */
   public static final String PARTIALS = Context.class.getName() + "#partials";
+
+  /**
+   * Inline partials.
+   */
+  public static final String INLINE_PARTIALS = "__inline_partials_";
 
   /**
    * The qualified name for partials. Internal use.
@@ -261,40 +349,37 @@ public class Context {
   /**
    * The parent context. Optional.
    */
-  private Context parent;
+  protected Context parent;
 
   /**
    * The target value. Resolved as '.' or 'this' inside templates. Required.
    */
-  private Object model;
+  Object model;
 
   /**
    * A thread safe storage.
    */
-  private Map<String, Object> data;
+  protected Map<String, Object> data;
 
   /**
    * Additional, data can be stored here.
    */
-  private Context extendedContext;
+  protected Context extendedContext;
 
   /**
    * The value resolver.
    */
-  private ValueResolver resolver;
+  protected ValueResolver resolver;
 
   /**
    * Creates a new context.
    *
-   * @param model The target value. Resolved as '.' or 'this' inside
-   *        templates. Required.
+   * @param model The target value. Resolved as '.' or 'this' inside templates. Required.
    */
   protected Context(final Object model) {
-    if (model instanceof Context) {
-      throw new IllegalArgumentException("Invalid model type:"
-          + model.getClass().getName());
-    }
     this.model = model;
+    this.extendedContext = null;
+    this.parent = null;
   }
 
   /**
@@ -307,28 +392,14 @@ public class Context {
   private static Context root(final Object model) {
     Context root = new Context(model);
     root.extendedContext = new Context(new HashMap<String, Object>());
-    root.parent = null;
     root.data = new HashMap<String, Object>();
     root.data.put(PARTIALS, new HashMap<String, Template>());
+    LinkedList<Map<String, Template>> partials = new LinkedList<>();
+    partials.push(new HashMap<String, Template>());
+    root.data.put(INLINE_PARTIALS, partials);
     root.data.put(INVOCATION_STACK, new LinkedList<TemplateSource>());
+    root.data.put("root", model);
     return root;
-  }
-
-  /**
-   * Creates a child context.
-   *
-   * @param parent The parent context. Required.
-   * @param model The target value. Resolved as '.' or 'this' inside
-   *        templates. Required.
-   * @return A child context.
-   */
-  private static Context child(final Context parent, final Object model) {
-    notNull(parent, "A parent context is required.");
-    Context child = new Context(model);
-    child.extendedContext = new Context(new HashMap<String, Object>());
-    child.parent = parent;
-    child.data = parent.data;
-    return child;
   }
 
   /**
@@ -336,23 +407,26 @@ public class Context {
    *
    * @param name The attribute's name. Required.
    * @param model The model data.
+   * @return This context.
    */
   @SuppressWarnings({"unchecked" })
-  private void combine(final String name, final Object model) {
-    notEmpty(name, "The variable's name is required.");
+  public Context combine(final String name, final Object model) {
     Map<String, Object> map = (Map<String, Object>) extendedContext.model;
     map.put(name, model);
+    return this;
   }
 
   /**
-   * Inser all the attributes in the context-stack.
+   * Insert all the attributes in the context-stack.
    *
    * @param model The model attributes.
+   * @return This context.
    */
   @SuppressWarnings({"unchecked" })
-  private void combine(final Map<String, ?> model) {
+  public Context combine(final Map<String, ?> model) {
     Map<String, Object> map = (Map<String, Object>) extendedContext.model;
     map.putAll(model);
+    return this;
   }
 
   /**
@@ -375,7 +449,6 @@ public class Context {
    * @return This context.
    */
   public Context data(final String name, final Object value) {
-    notEmpty(name, "The attribute's name is required.");
     data.put(name, value);
     return this;
   }
@@ -387,7 +460,6 @@ public class Context {
    * @return This context.
    */
   public Context data(final Map<String, ?> attributes) {
-    notNull(attributes, "The attributes are required.");
     data.putAll(attributes);
     return this;
   }
@@ -436,6 +508,54 @@ public class Context {
   }
 
   /**
+   * @return True, if this context is a block param context.
+   */
+  public boolean isBlockParams() {
+    return this instanceof BlockParam;
+  }
+
+  /**
+   * Lookup the given key inside the context stack.
+   * <ul>
+   * <li>Objects and hashes should be pushed onto the context stack.
+   * <li>All elements on the context stack should be accessible.
+   * <li>Multiple sections per template should be permitted.
+   * <li>Failed context lookups should be considered falsey.
+   * <li>Dotted names should be valid for Section tags.
+   * <li>Dotted names that cannot be resolved should be considered falsey.
+   * <li>Dotted Names - Context Precedence: Dotted names should be resolved against former
+   * resolutions.
+   * </ul>
+   *
+   * @param path The object path.
+   * @return The value associated to the given key or <code>null</code> if no value is found.
+   */
+  public Object get(final List<PathExpression> path) {
+    PathExpression head = path.get(0);
+    boolean local = head.local();
+    if (local) {
+      return new PathExpressionChain(path).next(resolver, this, model);
+    }
+    Context it = this;
+    Object value = null;
+    PathExpressionChain expr = new PathExpressionChain(path);
+    while (value == null && it != null) {
+      value = expr.eval(resolver, it, it.model);
+      if (value == null) {
+        // No luck, check the extended context.
+        value = expr.eval(resolver, it.extendedContext, it.extendedContext.model);
+
+        if (value == null) {
+          // data context
+          value = expr.eval(resolver, it, it.data);
+        }
+      }
+      it = it.parent;
+    }
+    return value == NULL ? null : value;
+  }
+
+  /**
    * Lookup the given key inside the context stack.
    * <ul>
    * <li>Objects and hashes should be pushed onto the context stack.
@@ -449,175 +569,10 @@ public class Context {
    * </ul>
    *
    * @param key The object key.
-   * @return The value associated to the given key or <code>null</code> if no
-   *         value is found.
+   * @return The value associated to the given key or <code>null</code> if no value is found.
    */
   public Object get(final String key) {
-    // '.' or 'this'
-    if (MUSTACHE_THIS.equals(key) || THIS.equals(key)) {
-      return internalGet(model);
-    }
-    // '..'
-    if (key.equals(PARENT)) {
-      return parent == null ? null : internalGet(parent.model);
-    }
-    // '../'
-    if (key.startsWith(PARENT_ATTR)) {
-      return parent == null ? null : parent.get(key.substring(PARENT_ATTR.length()));
-    }
-    String[] path = toPath(key);
-    Object value = internalGet(path);
-    if (value == null) {
-      // No luck, check the extended context.
-      value = get(extendedContext, key);
-      // No luck, check the data context.
-      if (value == null && data != null) {
-        String dataKey = key.charAt(0) == '@' ? key.substring(1) : key;
-        // simple data keys will be resolved immediately, complex keys need to go down and using a
-        // new context.
-        value = data.get(dataKey);
-        if (value == null && path.length > 1) {
-          // for complex keys, a new data context need to be created per invocation,
-          // bc data might changes per execution.
-          Context dataContext = Context.newBuilder(data)
-              .resolver(this.resolver)
-              .build();
-          // don't extend the lookup further.
-          dataContext.data = null;
-          value = dataContext.get(dataKey);
-          // destroy it!
-          dataContext.destroy();
-        }
-      }
-      // No luck, but before checking at the parent scope we need to check for
-      // the 'this' qualifier. If present, no look up will be done.
-      if (value == null && !path[0].equals(THIS)) {
-        value = get(parent, key);
-      }
-    }
-    return value == NULL ? null : value;
-  }
-
-  /**
-   * Look for the specified key in an external context.
-   *
-   * @param external The external context.
-   * @param key The associated key.
-   * @return The associated value or null if not found.
-   */
-  private Object get(final Context external, final String key) {
-    return external == null ? null : external.get(key);
-  }
-
-  /**
-   * Split the property name by '.' (except within an escaped blocked) and create an array of it.
-   *
-   * @param key The property's name.
-   * @return A path representation of the property (array based).
-   */
-  private String[] toPath(final String key) {
-    return PATH_PARSER.parsePath(key);
-  }
-
-  /**
-   * @param candidate resolve a candidate object.
-   * @return A resolved value or the current value if there isn't a resolved value.
-   */
-  private Object internalGet(final Object candidate) {
-    Object resolved = resolver.resolve(candidate);
-    return resolved == null ? candidate : resolved;
-  }
-
-  /**
-   * Iterate over the qualified path and return a value. The value can be
-   * null, {@link #NULL} or not null. If the value is <code>null</code>, the
-   * value isn't present and the lookup algorithm will searchin for the value in
-   * the parent context.
-   * If the value is {@value #NULL} the search must stop bc the context for
-   * the given path exists but there isn't a value there.
-   *
-   * @param path The qualified path.
-   * @return The value inside the stack for the given path.
-   */
-  private Object internalGet(final String... path) {
-    Object current = model;
-    // Resolve 'this' to the current model.
-    int start = path[0].equals(THIS) ? 1 : 0;
-    for (int i = start; i < path.length - 1; i++) {
-      current = resolve(current, path[i]);
-      if (current == null) {
-        return null;
-      }
-    }
-    String name = path[path.length - 1];
-    Object value = resolve(current, name);
-    if (value == null && current != model) {
-      // We're looking in the right scope, but the value isn't there
-      // returns a custom mark to stop looking
-      value = NULL;
-    }
-    return value;
-  }
-
-  /**
-   * Do the actual lookup of an unqualified property name.
-   *
-   * @param current The target object.
-   * @param expression The access expression.
-   * @return The associated value.
-   */
-  private Object resolve(final Object current, final String expression) {
-    // Null => null
-    if (current == null) {
-      return null;
-    }
-
-    // array/list access or invalid Java identifiers wrapped with []
-    Matcher matcher = IDX.matcher(expression);
-    if (matcher.matches()) {
-      String idx = matcher.group(1);
-      if (INT.matcher(idx).matches()) {
-        Object result = resolveArrayAccess(current, idx);
-        if (result != NULL) {
-          return result;
-        }
-      }
-      // It is not a index base object, defaults to string property lookup
-      // (usually not a valid Java identifier)
-      return resolver.resolve(current, idx);
-    }
-    // array or list access, exclusive
-    if (INT.matcher(expression).matches()) {
-      Object result = resolveArrayAccess(current, expression);
-      if (result != NULL) {
-        return result;
-      }
-    }
-    return resolver.resolve(current, expression);
-  }
-
-  /**
-   * Resolve a array or list access using idx.
-   *
-   * @param current The current scope.
-   * @param idx The index of the array or list.
-   * @return An object at the given location or null.
-   */
-  @SuppressWarnings("rawtypes")
-  private Object resolveArrayAccess(final Object current, final String idx) {
-    // It is a number, check if the current value is a index base object.
-    int pos = Integer.parseInt(idx);
-    try {
-      if (current instanceof List) {
-        return ((List) current).get(pos);
-      } else if (current.getClass().isArray()) {
-        return Array.get(current, pos);
-      }
-    } catch (IndexOutOfBoundsException exception) {
-      // Index is outside of range, fallback to null as in handlebar.js
-      return null;
-    }
-    return NULL;
+    return get(PathCompiler.compile(key));
   }
 
   /**
@@ -662,7 +617,6 @@ public class Context {
    * @return A new context builder.
    */
   public static Builder newBuilder(final Context parent, final Object model) {
-    notNull(parent, "The parent context is required.");
     return new Builder(parent, model);
   }
 
@@ -688,6 +642,23 @@ public class Context {
   }
 
   /**
+   * Creates a new block param context.
+   *
+   * @param parent The parent context. Required.
+   * @param names A list of names to set in the block param context.
+   * @param values A list of values to set in the block param context.
+   * @return A new block param context.
+   */
+  public static Context newBlockParamContext(final Context parent, final List<String> names,
+      final List<Object> values) {
+    Map<String, Object> hash = new HashMap<String, Object>();
+    for (int i = 0; i < names.size(); i++) {
+      hash.put(names.get(i), values.get(i));
+    }
+    return new BlockParam(parent, hash);
+  }
+
+  /**
    * Creates a new root context.
    *
    * @param model The model data.
@@ -695,6 +666,44 @@ public class Context {
    */
   public static Context newContext(final Object model) {
     return newBuilder(model).build();
+  }
+
+  /**
+   * Creates a new child context.
+   *
+   * @param model A model/data.
+   * @return A new context.
+   */
+  private Context newChild(final Object model) {
+    Context child = newChildContext(model);
+    child.extendedContext = new Context(new HashMap<String, Object>());
+    child.parent = this;
+    child.data = this.data;
+    return child;
+  }
+
+  /**
+   * Creates an empty/default context.
+   *
+   * @param model A model/data.
+   * @return A new context.
+   */
+  protected Context newChildContext(final Object model) {
+    return new Context(model);
+  }
+
+  /**
+   * Creates a new context but keep the <code>data</code> attribute.
+   *
+   * @param context Context to extract the <code>data</code> attribute.
+   * @param model A model/data.
+   * @return A new context.
+   */
+  public static Context copy(final Context context, final Object model) {
+    Context ctx = Context.newContext(model);
+    ctx.data = context.data;
+    ctx.resolver = context.resolver;
+    return ctx;
   }
 
 }

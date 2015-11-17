@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -42,7 +42,10 @@ class TemplateList extends BaseTemplate implements Iterable<Template> {
   /**
    * The list of child templates.
    */
-  private final List<Template> nodes = new LinkedList<Template>();
+  private final List<Template> nodes = new LinkedList<>();
+
+  /** Keep track of direct decorators and run them before merge. */
+  private final List<Template> decorators = new LinkedList<>();
 
   /**
    * Creates a new template list.
@@ -61,7 +64,24 @@ class TemplateList extends BaseTemplate implements Iterable<Template> {
    */
   public boolean add(final Template child) {
     nodes.add(child);
+    if (child instanceof VarDecorator || child instanceof BlockDecorator) {
+      decorators.add(child);
+    }
     return true;
+  }
+
+  @Override
+  public void before(final Context context, final Writer writer) throws IOException {
+    for (Template node : decorators) {
+      node.before(context, writer);
+    }
+  }
+
+  @Override
+  public void after(final Context context, final Writer writer) throws IOException {
+    for (Template node : decorators) {
+      node.after(context, writer);
+    }
   }
 
   @Override
@@ -111,5 +131,10 @@ class TemplateList extends BaseTemplate implements Iterable<Template> {
       paramNames.addAll(node.collectReferenceParameters());
     }
     return new ArrayList<String>(paramNames);
+  }
+
+  @Override
+  public String toString() {
+    return nodes.toString();
   }
 }

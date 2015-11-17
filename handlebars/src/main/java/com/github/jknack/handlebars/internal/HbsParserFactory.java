@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -97,7 +97,7 @@ public class HbsParserFactory implements ParserFactory {
         /**
          * Build the AST.
          */
-        TemplateBuilder builder = new TemplateBuilder(handlebars, source) {
+        TemplateBuilder<Template> builder = new TemplateBuilder<Template>(handlebars, source) {
           @Override
           protected void reportError(final CommonToken offendingToken, final int line,
               final int column,

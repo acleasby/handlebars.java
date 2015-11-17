@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012-2013 Edgar Espina
+ * Copyright (c) 2012-2015 Edgar Espina
  *
  * This file is part of Handlebars.java.
  *
@@ -229,7 +229,7 @@ public class RhinoHandlebars extends HandlebarsJs {
     registry.registerHelper(name, new Helper<Object>() {
       @Override
       public CharSequence apply(final Object context, final Options options) throws IOException {
-        Object jsContext = toJsObject(options.context);
+        Object jsContext = toJsObject(options.context.model(), options.context);
         Object arg0 = context;
         Integer paramSize = options.data(Context.PARAM_SIZE);
         if (paramSize == 0) {
@@ -313,10 +313,10 @@ public class RhinoHandlebars extends HandlebarsJs {
    * @param context Handlebars context.
    * @return A JS Rhino object.
    */
-  private static NativeObject hash(final Map<String, Object> map, final Context context) {
+  private static NativeObject hash(final Map<?, Object> map, final Context context) {
     NativeObject hash = new BetterNativeObject(context);
-    for (Entry<String, Object> prop : map.entrySet()) {
-      hash.defineProperty(prop.getKey(), prop.getValue(), NativeObject.READONLY);
+    for (Entry<?, Object> prop : map.entrySet()) {
+      hash.defineProperty(prop.getKey().toString(), prop.getValue(), NativeObject.READONLY);
     }
     return hash;
   }
