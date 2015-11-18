@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.github.acleasby</groupId>
   <artifactId>handlebars.java</artifactId>
-  <version>4.0.1-SNAPSHOT</version>
+  <version>4.0.2</version>
   <packaging>pom</packaging>
 
     <name>Handlebars.java</name>
