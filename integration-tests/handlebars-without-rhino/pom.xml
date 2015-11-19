@@ -4,7 +4,7 @@
   <parent>
     <groupId>com.github.acleasby</groupId>
     <artifactId>integration-tests</artifactId>
-    <version>4.0.1-SNAPSHOT</version>
+    <version>4.0.3</version>
   </parent>
 
   <modelVersion>4.0.0</modelVersion>

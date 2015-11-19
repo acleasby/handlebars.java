@@ -235,7 +235,7 @@ public class PrecompilePlugin extends HandlebarsPlugin {
             getLog().debug("  flatNamespace: " + flatNamespace);
 
             if (!amd) {
-                writer.append("(function () {\n");
+                writer.append("define(['handlebars'], function(Handlebars) {\n");
             }
             Context nullContext = Context.newContext(null);
             Set<String> handlebarsNames = new HashSet<String>();
@@ -278,7 +278,7 @@ public class PrecompilePlugin extends HandlebarsPlugin {
                 writer.append(extra).append("\n");
             }
             if (!amd) {
-                writer.append("\n})();");
+                writer.append("\n});");
             }
             writer.flush();
             IOUtil.close(writer);
